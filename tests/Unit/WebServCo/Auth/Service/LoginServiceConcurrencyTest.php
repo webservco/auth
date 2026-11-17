@@ -14,6 +14,7 @@ use WebServCo\Auth\Model\DataTransfer\LoginResult;
 use WebServCo\Auth\Model\DataTransfer\PendingAuthentication;
 use WebServCo\Auth\Model\LoginStatus;
 use WebServCo\Auth\Model\PendingStep;
+use WebServCo\Auth\Model\RememberLogin;
 use WebServCo\Auth\Model\SecondFactorPolicy;
 use WebServCo\Auth\Service\LoginService;
 
@@ -29,7 +30,7 @@ final class LoginServiceConcurrencyTest extends TestCase
     {
         $authenticationService = self::createStub(AuthenticationServiceInterface::class);
         $authenticationService->method('getPendingAuthentication')->willReturn(
-            new PendingAuthentication('42', 'attempt', PendingStep::SecondFactor, 1_800_000_000),
+            new PendingAuthentication('42', 'attempt', PendingStep::SecondFactor, 1_800_000_000, RememberLogin::No),
         );
         // The pending login expired, or another request completed it, after the code was accepted.
         $authenticationService->method('completePendingAuthentication')->willReturn(false);

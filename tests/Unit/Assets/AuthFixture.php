@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Assets;
 
+use WebServCo\Auth\Contract\RememberMeServiceInterface;
 use WebServCo\Auth\Model\DataTransfer\AccountTableConfiguration;
 use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
 use WebServCo\Auth\Service\AuthenticationService;
@@ -16,21 +17,28 @@ use function password_hash;
 use const PASSWORD_BCRYPT;
 
 /**
- * One active account (42, "editor", password "right password"), an in-memory session and a fixed clock.
+ * One active account (42, "editor", password "right password"), an in-memory session and cookie jar, and a fixed
+ * clock. RememberMeFixture adds remember-me: the cookie "remember", for 30 days.
  */
 final readonly class AuthFixture
 {
     public const string ACCOUNT_ID = '42';
 
+    public const string REMEMBER_COOKIE = 'remember';
+
+    public const int REMEMBER_LIFETIME = 2_592_000;
+
     public const int START_TIME = 1_800_000_000;
 
     private FixedClock $clock;
+    private InMemoryCookieService $cookieService;
     private SqlitePDOContainer $pdoContainer;
     private InMemorySessionService $sessionService;
 
     public function __construct()
     {
         $this->clock = new FixedClock(self::START_TIME);
+        $this->cookieService = new InMemoryCookieService();
         $this->pdoContainer = new SqlitePDOContainer();
         $this->pdoContainer->insertUser(42, 'editor', password_hash('right password', PASSWORD_BCRYPT, ['cost' => 4]));
         $this->sessionService = new InMemorySessionService();
@@ -50,8 +58,10 @@ final readonly class AuthFixture
         );
     }
 
-    public function createAuthenticationService(string $realm = 'admin'): AuthenticationService
-    {
+    public function createAuthenticationService(
+        string $realm = 'admin',
+        ?RememberMeServiceInterface $rememberMeService = null,
+    ): AuthenticationService {
         return new AuthenticationService(
             $this->createAccountStorage(),
             $this->createStateStorage($realm),
@@ -59,6 +69,7 @@ final readonly class AuthFixture
             (new DataExtractionContainerFactory())->createDataExtractionContainer(false),
             new RealmConfiguration($realm),
             $this->sessionService,
+            $rememberMeService,
         );
     }
 
@@ -84,6 +95,26 @@ final readonly class AuthFixture
     public function getClock(): FixedClock
     {
         return $this->clock;
+    }
+
+    public function getCookieService(): InMemoryCookieService
+    {
+        return $this->cookieService;
+    }
+
+    public function getPdoContainer(): SqlitePDOContainer
+    {
+        return $this->pdoContainer;
+    }
+
+    /**
+     * The value of the remember-me cookie, or '' when there is none.
+     *
+     * @phpstan-impure
+     */
+    public function getRememberCookie(): string
+    {
+        return $this->cookieService->getValue(self::REMEMBER_COOKIE) ?? '';
     }
 
     public function getSessionService(): InMemorySessionService

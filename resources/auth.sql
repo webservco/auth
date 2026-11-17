@@ -11,3 +11,16 @@ CREATE TABLE auth_account_state (
     last_login_at INT UNSIGNED NULL,
     PRIMARY KEY (realm, account_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- Remember-me tokens, only for realms that use remember-me. The validator is stored as its SHA-256 (hex).
+CREATE TABLE auth_remember_token (
+    selector CHAR(32) NOT NULL,
+    realm VARCHAR(32) NOT NULL,
+    account_id VARCHAR(64) NOT NULL,
+    validator_hash CHAR(64) NOT NULL,
+    epoch INT UNSIGNED NOT NULL,
+    expires_at INT UNSIGNED NOT NULL,
+    created_at INT UNSIGNED NOT NULL,
+    PRIMARY KEY (selector),
+    KEY realm_account (realm, account_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

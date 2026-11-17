@@ -12,6 +12,7 @@ use WebServCo\Auth\Contract\LoginServiceFactoryInterface;
 use WebServCo\Auth\Contract\LoginServiceInterface;
 use WebServCo\Auth\Model\DataTransfer\AccountTableConfiguration;
 use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
+use WebServCo\Auth\Model\DataTransfer\RememberMeConfiguration;
 use WebServCo\Auth\Model\SecondFactorPolicy;
 use WebServCo\Auth\Service\CredentialVerificationService;
 use WebServCo\Auth\Service\LoginService;
@@ -33,11 +34,13 @@ final readonly class LoginServiceFactory implements LoginServiceFactoryInterface
         SecondFactorPolicy $secondFactorPolicy = SecondFactorPolicy::Optional,
         array $secondFactors = [],
         ?LegacyPasswordVerifierInterface $legacyPasswordVerifier = null,
+        ?RememberMeConfiguration $rememberMeConfiguration = null,
     ): LoginServiceInterface {
         return new LoginService(
             $this->authenticationServiceFactory->createAuthenticationService(
                 $realmConfiguration,
                 $accountTableConfiguration,
+                $rememberMeConfiguration,
             ),
             new CredentialVerificationService(
                 $this->accountStorageFactory->createAccountStorage($accountTableConfiguration),

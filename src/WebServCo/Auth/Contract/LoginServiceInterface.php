@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WebServCo\Auth\Contract;
 
 use WebServCo\Auth\Model\DataTransfer\LoginResult;
+use WebServCo\Auth\Model\RememberLogin;
 
 /**
  * The login sequence: password, then a second factor if the account has one (or must set one up), then logged in.
@@ -31,9 +32,14 @@ interface LoginServiceInterface
 
     /**
      * The password step. LoggedIn when no second factor applies; SecondFactorRequired and SecondFactorSetupRequired
-     * leave a pending login for 5 minutes.
+     * leave a pending login for 5 minutes. RememberLogin::Yes keeps the login after the browser closes, set once
+     * the login completes (after the second factor, if any).
      */
-    public function login(string $login, string $password): LoginResult;
+    public function login(
+        string $login,
+        string $password,
+        RememberLogin $rememberLogin = RememberLogin::No,
+    ): LoginResult;
 
     /**
      * Starts the challenge of a method for the pending login and returns what the page needs ('' for an

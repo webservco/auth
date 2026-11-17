@@ -15,6 +15,7 @@ use WebServCo\Auth\Model\AuthenticationAttemptResult;
 use WebServCo\Auth\Model\DataTransfer\LoginResult;
 use WebServCo\Auth\Model\LoginStatus;
 use WebServCo\Auth\Model\PendingStep;
+use WebServCo\Auth\Model\RememberLogin;
 use WebServCo\Auth\Model\SecondFactorPolicy;
 use WebServCo\Auth\Model\SecondFactorResult;
 
@@ -125,6 +126,7 @@ final readonly class LoginService implements LoginServiceInterface
         string $login,
         #[SensitiveParameter]
         string $password,
+        RememberLogin $rememberLogin = RememberLogin::No,
     ): LoginResult {
         $attempt = $this->credentialVerificationService->verifyCredentials($login, $password);
 
@@ -137,7 +139,11 @@ final readonly class LoginService implements LoginServiceInterface
         }
 
         if ($this->hasEnabledMethod($attempt->accountId)) {
-            $this->authenticationService->startPendingAuthentication($attempt->accountId, PendingStep::SecondFactor);
+            $this->authenticationService->startPendingAuthentication(
+                $attempt->accountId,
+                PendingStep::SecondFactor,
+                $rememberLogin,
+            );
 
             return new LoginResult(LoginStatus::SecondFactorRequired);
         }
@@ -146,12 +152,13 @@ final readonly class LoginService implements LoginServiceInterface
             $this->authenticationService->startPendingAuthentication(
                 $attempt->accountId,
                 PendingStep::SecondFactorSetup,
+                $rememberLogin,
             );
 
             return new LoginResult(LoginStatus::SecondFactorSetupRequired);
         }
 
-        $this->authenticationService->login($attempt->accountId);
+        $this->authenticationService->login($attempt->accountId, $rememberLogin);
 
         return new LoginResult(LoginStatus::LoggedIn);
     }

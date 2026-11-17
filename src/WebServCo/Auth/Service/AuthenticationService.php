@@ -7,12 +7,14 @@ namespace WebServCo\Auth\Service;
 use Override;
 use Psr\Clock\ClockInterface;
 use WebServCo\Auth\Contract\AuthenticationServiceInterface;
+use WebServCo\Auth\Contract\RememberMeServiceInterface;
 use WebServCo\Auth\Contract\Storage\AccountStateStorageInterface;
 use WebServCo\Auth\Contract\Storage\AccountStorageInterface;
 use WebServCo\Auth\Model\DataTransfer\Account;
 use WebServCo\Auth\Model\DataTransfer\PendingAuthentication;
 use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
 use WebServCo\Auth\Model\PendingStep;
+use WebServCo\Auth\Model\RememberLogin;
 use WebServCo\Data\Contract\Extraction\DataExtractionContainerInterface;
 use WebServCo\Session\Contract\SessionServiceInterface;
 
@@ -33,6 +35,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         private DataExtractionContainerInterface $dataExtractionContainer,
         private RealmConfiguration $realmConfiguration,
         private SessionServiceInterface $sessionService,
+        private ?RememberMeServiceInterface $rememberMeService = null,
     ) {
     }
 
@@ -45,7 +48,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             return false;
         }
 
-        return $this->login($pendingAuthentication->accountId);
+        return $this->login($pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
     }
 
     #[Override]
@@ -54,7 +57,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         $entry = $this->readEntry($this->getLoginKey());
 
         if ($entry === null) {
-            return null;
+            return $this->restoreRememberedLogin();
         }
 
         $now = $this->getTime();
@@ -63,7 +66,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         if ($account === null) {
             $this->sessionService->unsetSessionDataItem($this->getLoginKey());
 
-            return null;
+            return $this->restoreRememberedLogin();
         }
 
         $entry['lastActivityAt'] = $now;
@@ -96,17 +99,17 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             $extraction->getString($entry, 'attemptId'),
             $step,
             $startedAt,
+            $this->getRememberLogin($extraction->getString($entry, 'rememberLogin', RememberLogin::No->name)),
         );
     }
 
     #[Override]
-    public function login(string $accountId): bool
+    public function login(string $accountId, RememberLogin $rememberLogin = RememberLogin::No): bool
     {
         $now = $this->getTime();
         $this->sessionService->regenerateId();
         $this->sessionService->unsetSessionDataItem($this->getPendingKey());
-
-        return $this->sessionService->setSessionDataItem(
+        $this->sessionService->setSessionDataItem(
             $this->getLoginKey(),
             [
                 'accountId' => $accountId,
@@ -115,11 +118,19 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
                 'lastActivityAt' => $now,
             ],
         );
+
+        if ($rememberLogin === RememberLogin::Yes) {
+            $this->rememberMeService?->remember($accountId);
+        }
+
+        return true;
     }
 
     #[Override]
     public function logout(): bool
     {
+        $this->rememberMeService?->forget();
+
         return $this->sessionService->destroy();
     }
 
@@ -132,13 +143,17 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
     }
 
     #[Override]
-    public function startPendingAuthentication(string $accountId, PendingStep $step): PendingAuthentication
-    {
+    public function startPendingAuthentication(
+        string $accountId,
+        PendingStep $step,
+        RememberLogin $rememberLogin = RememberLogin::No,
+    ): PendingAuthentication {
         $pendingAuthentication = new PendingAuthentication(
             $accountId,
             bin2hex(random_bytes(16)),
             $step,
             $this->getTime(),
+            $rememberLogin,
         );
         $this->sessionService->regenerateId();
         $this->sessionService->unsetSessionDataItem($this->getLoginKey());
@@ -147,6 +162,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             [
                 'accountId' => $pendingAuthentication->accountId,
                 'attemptId' => $pendingAuthentication->attemptId,
+                'rememberLogin' => $rememberLogin->name,
                 'startedAt' => $pendingAuthentication->startedAt,
                 'step' => $step->name,
             ],
@@ -190,6 +206,14 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         return $this->getLoginKey() . '.pending';
     }
 
+    private function getRememberLogin(string $name): RememberLogin
+    {
+        return match ($name) {
+            RememberLogin::Yes->name => RememberLogin::Yes,
+            default => RememberLogin::No,
+        };
+    }
+
     private function getStep(string $name): ?PendingStep
     {
         return match ($name) {
@@ -202,6 +226,38 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
     private function getTime(): int
     {
         return $this->clock->now()->getTimestamp();
+    }
+
+    /**
+     * A remember-me cookie, when the realm has remember-me: a new session login for its account. It is the realm's
+     * login after a session timeout too; an epoch change or a disabled account ends both.
+     */
+    private function restoreRememberedLogin(): ?Account
+    {
+        $rememberMeService = $this->rememberMeService;
+
+        if ($rememberMeService === null) {
+            return null;
+        }
+
+        $accountId = $rememberMeService->restore();
+
+        if ($accountId === null) {
+            return null;
+        }
+
+        $account = $this->accountStorage->fetchAccount($accountId);
+
+        // Deactivated since the token was issued.
+        if ($account === null) {
+            $rememberMeService->forget();
+
+            return null;
+        }
+
+        $this->login($accountId);
+
+        return $account;
     }
 
     /**

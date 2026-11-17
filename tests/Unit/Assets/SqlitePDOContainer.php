@@ -27,6 +27,15 @@ final class SqlitePDOContainer implements PDOContainerInterface
             last_login_at INTEGER NULL,
             PRIMARY KEY (realm, account_id)
         );
+        CREATE TABLE auth_remember_token (
+            selector TEXT NOT NULL PRIMARY KEY,
+            realm TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            validator_hash TEXT NOT NULL,
+            epoch INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
         CREATE TABLE user_account (
             id INTEGER PRIMARY KEY,
             username TEXT NOT NULL,

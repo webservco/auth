@@ -2,9 +2,9 @@
 
 A PHP component/library. Please see [webservco/sandbox](https://webservco.github.io/sandbox/) for an example project using these types of components.
 
-Password authentication and authenticated sessions for any account table, with throttling, legacy password upgrade, session timeouts and an optional second factor.
+Password authentication and authenticated sessions for any account table, with throttling, legacy password upgrade, session timeouts, remember-me and an optional second factor.
 
-- Requires: the `auth_account_state` table in [`resources/auth.sql`](resources/auth.sql); a started session from `webservco/session`
+- Requires: the `auth_account_state` table in [`resources/auth.sql`](resources/auth.sql) (and `auth_remember_token` for remember-me); a started session from `webservco/session`
 - Related: `webservco/mfa` (TOTP second factor, through the adapter below); `webservco/database` (the PDO container)
 
 ---
@@ -118,6 +118,53 @@ $result = $loginService->completeSecondFactor('totp', $submittedCode); // Logged
 $result = $loginService->completeSecondFactorSetup('totp');
 ```
 
+### Old password hashes
+
+Hashes that `password_verify()` doesn't know (MD5, SHA-1…) need a verifier from the application. After the next successful login the password column holds a bcrypt hash instead, so it must take 60 characters (`VARCHAR(255)` leaves room for later algorithms). Without a verifier, accounts with such hashes can't log in.
+
+```php
+use WebServCo\Auth\Contract\LegacyPasswordVerifierInterface;
+
+final readonly class Md5PasswordVerifier implements LegacyPasswordVerifierInterface
+{
+    public function verify(#[\SensitiveParameter] string $password, string $legacyHash): bool
+    {
+        // Repeat exactly what the old code did to the password before hashing it (trim, addslashes…).
+        return hash_equals($legacyHash, md5($password));
+    }
+}
+
+$loginService = $loginServiceFactory->createLoginService(
+    $realm,
+    $accountTable,
+    legacyPasswordVerifier: new Md5PasswordVerifier(),
+);
+```
+
+### Remember me
+
+For customer realms, not admin ones: a remembered login outlives the session timeouts, and it doesn't ask for the second factor again (that was done at the login).
+
+```php
+use WebServCo\Auth\Model\DataTransfer\RememberMeConfiguration;
+use WebServCo\Auth\Model\RememberLogin;
+use WebServCo\Session\Model\DataTransfer\CookieConfiguration;
+
+$rememberMe = new RememberMeConfiguration(
+    '__Host-remember', // "__Host-": this host only, HTTPS only
+    new CookieConfiguration(2_592_000, '/', '', true, true, 'Lax'), // 30 days, path, domain, Secure, HttpOnly, SameSite
+);
+// The same configuration for both services of the realm.
+$authenticationService = $authenticationServiceFactory->createAuthenticationService($realm, $accountTable, $rememberMe);
+$loginService = $loginServiceFactory->createLoginService($realm, $accountTable, rememberMeConfiguration: $rememberMe);
+
+// Login form with a "Remember me" checkbox.
+$rememberLogin = $rememberChecked ? RememberLogin::Yes : RememberLogin::No;
+$result = $loginService->login($submittedLogin, $submittedPassword, $rememberLogin);
+```
+
+The cookie is set when the login completes (after the second factor, if any). `getAuthenticatedAccount()` uses it when the session has no valid login, `logout()` deletes it, and `logoutEverywhere()` ends every cookie of the account. A token lasts its lifetime from the login; the database keeps only its SHA-256.
+
 ### New passwords
 
 Check a password when it is set or changed (not at login), then hash it:
@@ -171,8 +218,9 @@ $isValid = $csrfTokenService->isValidToken($submittedToken);
 | `Contract\PasswordPolicyServiceInterface` | `Service\PasswordPolicyService` | Checks a new password: length, login, common list, breaches. |
 | `Contract\BreachedPasswordCheckerInterface` | `Service\PwnedPasswordsChecker` | Have I Been Pwned's range API, through any PSR-18 client. |
 | `Contract\CsrfTokenServiceInterface` | `Service\CsrfTokenService` | One CSRF token per session for forms. |
-| `Contract\LoginServiceFactoryInterface` | `Factory\LoginServiceFactory` | Creates `LoginServiceInterface`; also takes the policy, the factors and a legacy verifier. |
-| `Contract\AuthenticationServiceFactoryInterface` | `Factory\AuthenticationServiceFactory` | Creates `AuthenticationServiceInterface`. |
+| `Contract\RememberMeServiceInterface` | `Service\RememberMeService` | The remember-me cookie, used by `AuthenticationService`. |
+| `Contract\LoginServiceFactoryInterface` | `Factory\LoginServiceFactory` | Creates `LoginServiceInterface`; also takes the policy, the factors, a legacy verifier and remember-me. |
+| `Contract\AuthenticationServiceFactoryInterface` | `Factory\AuthenticationServiceFactory` | Creates `AuthenticationServiceInterface`, with or without remember-me. |
 
 Namespaces are relative to `WebServCo\Auth\`.
 
