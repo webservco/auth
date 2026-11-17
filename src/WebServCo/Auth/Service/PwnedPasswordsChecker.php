@@ -23,11 +23,6 @@ use function trim;
  * Have I Been Pwned's free Pwned Passwords range API, with k-anonymity: only the first 5 characters of the
  * password's SHA-1 are sent. The API returns every known hash with that start (about 2,000) and the match is made
  * here, so neither the password nor its full hash leaves the server. Padding hides the size of the answer.
- *
- * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
- * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
- *
- * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
  */
 final readonly class PwnedPasswordsChecker implements BreachedPasswordCheckerInterface
 {
@@ -36,20 +31,16 @@ final readonly class PwnedPasswordsChecker implements BreachedPasswordCheckerInt
     /**
      * @param \Psr\Http\Client\ClientInterface $httpClient a PSR-18 client (webservco/http-client); set its timeout
      */
-    public function __construct(
-        private ClientInterface $httpClient,
-        private RequestFactoryInterface $requestFactory,
-    ) {
+    public function __construct(private ClientInterface $httpClient, private RequestFactoryInterface $requestFactory,)
+    {
     }
 
     /**
      * When the API can't be reached the answer is false, and the other checks of the policy still apply.
      */
     #[Override]
-    public function isBreached(
-        #[SensitiveParameter]
-        string $password,
-    ): bool {
+    public function isBreached(#[SensitiveParameter] string $password,): bool
+    {
         $hash = strtoupper(sha1($password));
         $request = $this->requestFactory->createRequest('GET', self::URL . substr($hash, 0, 5))
             ->withHeader('Add-Padding', 'true')

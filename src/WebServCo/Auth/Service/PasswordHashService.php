@@ -15,12 +15,6 @@ use function password_verify;
 
 use const PASSWORD_DEFAULT;
 
-/**
- * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
- * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
- *
- * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
- */
 final readonly class PasswordHashService implements PasswordHashServiceInterface
 {
     /**
@@ -39,10 +33,8 @@ final readonly class PasswordHashService implements PasswordHashServiceInterface
     }
 
     #[Override]
-    public function hash(
-        #[SensitiveParameter]
-        string $password,
-    ): string {
+    public function hash(#[SensitiveParameter] string $password,): string
+    {
         return password_hash($password, PASSWORD_DEFAULT, $this->options);
     }
 
@@ -62,10 +54,8 @@ final readonly class PasswordHashService implements PasswordHashServiceInterface
     }
 
     #[Override]
-    public function simulateVerification(
-        #[SensitiveParameter]
-        string $password,
-    ): bool {
+    public function simulateVerification(#[SensitiveParameter] string $password,): bool
+    {
         /**
          * Psalm: "The call to password_hash is not used". It is called for its time: hashing costs the same as
          * verifying, one bcrypt key setup at the same cost.
@@ -78,11 +68,8 @@ final readonly class PasswordHashService implements PasswordHashServiceInterface
     }
 
     #[Override]
-    public function verify(
-        #[SensitiveParameter]
-        string $password,
-        string $hash,
-    ): bool {
+    public function verify(#[SensitiveParameter] string $password, string $hash,): bool
+    {
         return password_verify($password, $hash);
     }
 }

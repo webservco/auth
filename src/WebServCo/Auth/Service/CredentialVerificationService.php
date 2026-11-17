@@ -24,11 +24,6 @@ use function str_contains;
  * resets the count. There is no permanent lock, which would let anyone lock a user out.
  *
  * Every path costs one bcrypt operation, so the response time doesn't tell unknown, throttled or legacy accounts apart.
- *
- * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
- * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
- *
- * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
  */
 final readonly class CredentialVerificationService implements CredentialVerificationServiceInterface
 {
@@ -46,11 +41,8 @@ final readonly class CredentialVerificationService implements CredentialVerifica
     }
 
     #[Override]
-    public function verifyCredentials(
-        string $login,
-        #[SensitiveParameter]
-        string $password,
-    ): AuthenticationAttempt {
+    public function verifyCredentials(string $login, #[SensitiveParameter] string $password,): AuthenticationAttempt
+    {
         // bcrypt can't hash a NUL byte (password_hash() throws), and password_verify() ignores what follows one.
         if (str_contains($password, "\0")) {
             return new AuthenticationAttempt(AuthenticationAttemptResult::InvalidCredentials, null, 0);

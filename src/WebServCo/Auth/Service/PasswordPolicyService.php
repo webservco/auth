@@ -23,11 +23,6 @@ use function strtolower;
 /**
  * NIST SP 800-63B-4: a minimum length, every character allowed (spaces and Unicode too), no rules about mixing
  * character types, and a blocklist of common and breached passwords.
- *
- * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
- * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
- *
- * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
  */
 final readonly class PasswordPolicyService implements PasswordPolicyServiceInterface
 {
@@ -49,11 +44,8 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
     }
 
     #[Override]
-    public function check(
-        #[SensitiveParameter]
-        string $password,
-        string $login,
-    ): array {
+    public function check(#[SensitiveParameter] string $password, string $login,): array
+    {
         $problems = $this->findLocalProblems($password, $login);
 
         // The breach check is a network call: only make it for a password that is otherwise fine.
@@ -68,11 +60,8 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
         return [];
     }
 
-    private function containsLogin(
-        #[SensitiveParameter]
-        string $password,
-        string $login,
-    ): bool {
+    private function containsLogin(#[SensitiveParameter] string $password, string $login,): bool
+    {
         // str_contains() is always true for an empty needle.
         if ($login === '') {
             return false;
@@ -81,10 +70,8 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
         return str_contains(strtolower($password), strtolower($login));
     }
 
-    private function countCharacters(
-        #[SensitiveParameter]
-        string $password,
-    ): int {
+    private function countCharacters(#[SensitiveParameter] string $password,): int
+    {
         $count = preg_match_all('/./su', $password);
 
         // Not valid UTF-8: count bytes.
@@ -98,11 +85,8 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
     /**
      * @return list<\WebServCo\Auth\Model\PasswordProblem>
      */
-    private function findLocalProblems(
-        #[SensitiveParameter]
-        string $password,
-        string $login,
-    ): array {
+    private function findLocalProblems(#[SensitiveParameter] string $password, string $login,): array
+    {
         $problems = [];
 
         if ($this->countCharacters($password) < $this->minimumLength) {
@@ -128,10 +112,8 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
         return $problems;
     }
 
-    private function isCommon(
-        #[SensitiveParameter]
-        string $password,
-    ): bool {
+    private function isCommon(#[SensitiveParameter] string $password,): bool
+    {
         $file = $this->commonPasswordsFile ?? dirname(__DIR__, 4) . '/resources/common-passwords.txt';
         $commonPasswords = is_readable($file)
             ? file_get_contents($file)

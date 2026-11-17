@@ -25,11 +25,6 @@ use function preg_match;
 /**
  * The second factor is always called with the pending login's own account id and attempt id, so an answer for one
  * account can never complete the login of another.
- *
- * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
- * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
- *
- * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
  */
 final readonly class LoginService implements LoginServiceInterface
 {
@@ -50,11 +45,8 @@ final readonly class LoginService implements LoginServiceInterface
     }
 
     #[Override]
-    public function completeSecondFactor(
-        string $methodId,
-        #[SensitiveParameter]
-        string $response,
-    ): LoginResult {
+    public function completeSecondFactor(string $methodId, #[SensitiveParameter] string $response,): LoginResult
+    {
         $pendingAuthentication = $this->authenticationService->getPendingAuthentication();
 
         if ($pendingAuthentication === null || $pendingAuthentication->step !== PendingStep::SecondFactor) {
@@ -86,11 +78,8 @@ final readonly class LoginService implements LoginServiceInterface
      * enough.
      */
     #[Override]
-    public function completeSecondFactorSetup(
-        string $methodId,
-        #[SensitiveParameter]
-        string $response,
-    ): LoginResult {
+    public function completeSecondFactorSetup(string $methodId, #[SensitiveParameter] string $response,): LoginResult
+    {
         $pendingAuthentication = $this->authenticationService->getPendingAuthentication();
 
         if ($pendingAuthentication === null || $pendingAuthentication->step !== PendingStep::SecondFactorSetup) {
