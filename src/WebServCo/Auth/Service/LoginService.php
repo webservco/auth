@@ -73,7 +73,12 @@ final readonly class LoginService implements LoginServiceInterface
             $response,
         );
 
-        return $this->completeOn($result, $pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
+        return $this->completeOn(
+            $result,
+            $pendingAuthentication->accountId,
+            $pendingAuthentication->rememberLogin,
+            $pendingAuthentication->epoch,
+        );
     }
 
     /**
@@ -104,7 +109,12 @@ final readonly class LoginService implements LoginServiceInterface
             $response,
         );
 
-        return $this->completeOn($result, $pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
+        return $this->completeOn(
+            $result,
+            $pendingAuthentication->accountId,
+            $pendingAuthentication->rememberLogin,
+            $pendingAuthentication->epoch,
+        );
     }
 
     #[Override]
@@ -148,27 +158,15 @@ final readonly class LoginService implements LoginServiceInterface
             return new LoginResult(LoginStatus::InvalidCredentials);
         }
 
-        if ($this->hasEnabledMethod($attempt->accountId)) {
-            $this->authenticationService->startPendingAuthentication(
-                $attempt->accountId,
-                PendingStep::SecondFactor,
-                $rememberLogin,
-            );
+        $step = $this->getPendingStep($attempt->accountId);
 
-            return new LoginResult(LoginStatus::SecondFactorRequired);
+        if ($step !== null) {
+            return $this->startPendingStep($attempt->accountId, $attempt->epoch, $step, $rememberLogin);
         }
 
-        if ($this->secondFactorPolicy === SecondFactorPolicy::Required) {
-            $this->authenticationService->startPendingAuthentication(
-                $attempt->accountId,
-                PendingStep::SecondFactorSetup,
-                $rememberLogin,
-            );
-
-            return new LoginResult(LoginStatus::SecondFactorSetupRequired);
+        if (!$this->authenticationService->login($attempt->accountId, $rememberLogin, $attempt->epoch)) {
+            return new LoginResult(LoginStatus::InvalidCredentials);
         }
-
-        $this->authenticationService->login($attempt->accountId, $rememberLogin);
 
         return new LoginResult(LoginStatus::LoggedIn);
     }
@@ -205,9 +203,9 @@ final readonly class LoginService implements LoginServiceInterface
         return true;
     }
 
-    private function completeLogin(string $accountId, RememberLogin $rememberLogin): LoginResult
+    private function completeLogin(string $accountId, RememberLogin $rememberLogin, int $epoch): LoginResult
     {
-        if (!$this->authenticationService->login($accountId, $rememberLogin)) {
+        if (!$this->authenticationService->login($accountId, $rememberLogin, $epoch)) {
             return new LoginResult(LoginStatus::NoPendingLogin);
         }
 
@@ -215,15 +213,16 @@ final readonly class LoginService implements LoginServiceInterface
     }
 
     /**
-     * The pending login's account and remember-me request complete the login when the method accepted.
+     * The pending login's account, remember-me request and epoch complete the login when the method accepted.
      */
     private function completeOn(
         SecondFactorResult $result,
         string $accountId,
         RememberLogin $rememberLogin,
+        int $epoch,
     ): LoginResult {
         return match ($result) {
-            SecondFactorResult::Accepted => $this->completeLogin($accountId, $rememberLogin),
+            SecondFactorResult::Accepted => $this->completeLogin($accountId, $rememberLogin, $epoch),
             SecondFactorResult::Locked => new LoginResult(LoginStatus::SecondFactorLocked),
             SecondFactorResult::Rejected => new LoginResult(LoginStatus::SecondFactorRejected),
         };
@@ -249,6 +248,38 @@ final readonly class LoginService implements LoginServiceInterface
         }
 
         return null;
+    }
+
+    /**
+     * After the password: a challenge for an enabled method, a setup where the policy requires a method, or nothing.
+     */
+    private function getPendingStep(string $accountId): ?PendingStep
+    {
+        if ($this->hasEnabledMethod($accountId)) {
+            return PendingStep::SecondFactor;
+        }
+
+        if ($this->secondFactorPolicy === SecondFactorPolicy::Required) {
+            return PendingStep::SecondFactorSetup;
+        }
+
+        return null;
+    }
+
+    private function startPendingStep(
+        string $accountId,
+        int $epoch,
+        PendingStep $step,
+        RememberLogin $rememberLogin,
+    ): LoginResult {
+        $this->authenticationService->startPendingAuthentication($accountId, $step, $rememberLogin, $epoch);
+
+        return new LoginResult(
+            match ($step) {
+                PendingStep::SecondFactor => LoginStatus::SecondFactorRequired,
+                PendingStep::SecondFactorSetup => LoginStatus::SecondFactorSetupRequired,
+            },
+        );
     }
 
     private function hasEnabledMethod(string $accountId): bool

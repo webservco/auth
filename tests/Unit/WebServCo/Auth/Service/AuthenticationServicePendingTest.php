@@ -14,6 +14,7 @@ use WebServCo\Auth\Model\DataTransfer\AccountTableConfiguration;
 use WebServCo\Auth\Model\DataTransfer\PendingAuthentication;
 use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
 use WebServCo\Auth\Model\PendingStep;
+use WebServCo\Auth\Model\RememberLogin;
 use WebServCo\Auth\Service\AuthenticationService;
 use WebServCo\Auth\Service\Storage\PDOAccountStateStorage;
 use WebServCo\Auth\Service\Storage\PDOAccountStorage;
@@ -64,6 +65,18 @@ final class AuthenticationServicePendingTest extends TestCase
 
         $fixture->advanceClock(1);
 
+        self::assertNull($service->getPendingAuthentication());
+    }
+
+    public function testLoggingOutEverywhereDuringAPendingLoginRefusesIt(): void
+    {
+        $fixture = new AuthFixture();
+        $service = $fixture->createAuthenticationService();
+        $started = $service->startPendingAuthentication(AuthFixture::ACCOUNT_ID, PendingStep::SecondFactor);
+        $service->logoutEverywhere(AuthFixture::ACCOUNT_ID);
+
+        self::assertFalse($service->login(AuthFixture::ACCOUNT_ID, RememberLogin::Yes, $started->epoch));
+        self::assertNull($service->getAuthenticatedAccount());
         self::assertNull($service->getPendingAuthentication());
     }
 

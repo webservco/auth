@@ -88,12 +88,22 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             $step,
             $startedAt,
             $this->getRememberLogin($extraction->getString($entry, 'rememberLogin', RememberLogin::No->name)),
+            $extraction->getInt($entry, 'epoch'),
         );
     }
 
     #[Override]
-    public function login(string $accountId, RememberLogin $rememberLogin = RememberLogin::No): bool
+    public function login(string $accountId, RememberLogin $rememberLogin = RememberLogin::No, ?int $epoch = null): bool
     {
+        $currentEpoch = $this->accountStateStorage->fetch($accountId)->epoch;
+
+        // "Log out everywhere" came after the password check.
+        if ($epoch !== null && $epoch !== $currentEpoch) {
+            $this->sessionService->unsetSessionDataItem($this->getPendingKey());
+
+            return false;
+        }
+
         $now = $this->getTime();
         $this->sessionService->regenerateId();
         $this->sessionService->unsetSessionDataItem($this->getPendingKey());
@@ -102,7 +112,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             [
                 'accountId' => $accountId,
                 'authenticatedAt' => $now,
-                'epoch' => $this->accountStateStorage->fetch($accountId)->epoch,
+                'epoch' => $currentEpoch,
                 'lastActivityAt' => $now,
             ],
         );
@@ -135,6 +145,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         string $accountId,
         PendingStep $step,
         RememberLogin $rememberLogin = RememberLogin::No,
+        ?int $epoch = null,
     ): PendingAuthentication {
         $pendingAuthentication = new PendingAuthentication(
             $accountId,
@@ -142,6 +153,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             $step,
             $this->getTime(),
             $rememberLogin,
+            $epoch ?? $this->accountStateStorage->fetch($accountId)->epoch,
         );
         $this->sessionService->regenerateId();
         $this->sessionService->unsetSessionDataItem($this->getLoginKey());
@@ -150,6 +162,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             [
                 'accountId' => $pendingAuthentication->accountId,
                 'attemptId' => $pendingAuthentication->attemptId,
+                'epoch' => $pendingAuthentication->epoch,
                 'rememberLogin' => $rememberLogin->name,
                 'startedAt' => $pendingAuthentication->startedAt,
                 'step' => $step->name,

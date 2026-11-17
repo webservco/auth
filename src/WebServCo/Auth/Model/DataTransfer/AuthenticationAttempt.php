@@ -8,7 +8,8 @@ use WebServCo\Auth\Model\AuthenticationAttemptResult;
 use WebServCo\Data\Contract\Transfer\DataTransferInterface;
 
 /**
- * The account id is set only on success; the wait is set only when throttled.
+ * The account id and its epoch (read before the password check) are set only on success; the wait only when
+ * throttled.
  */
 final readonly class AuthenticationAttempt implements DataTransferInterface
 {
@@ -16,6 +17,7 @@ final readonly class AuthenticationAttempt implements DataTransferInterface
         public AuthenticationAttemptResult $result,
         public ?string $accountId,
         public int $retryAfterSeconds,
+        public int $epoch = 0,
     ) {
     }
 }

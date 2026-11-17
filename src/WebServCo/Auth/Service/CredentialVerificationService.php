@@ -60,19 +60,10 @@ final readonly class CredentialVerificationService implements CredentialVerifica
 
         $now = $this->clock->now()->getTimestamp();
         $state = $this->accountStateStorage->fetch($credential->accountId);
+
         // Counted before the slow password check: a success clears the count again.
-        $isCounted = $this->accountStateStorage->countAttempt(
-            $credential->accountId,
-            $now,
-            self::THROTTLE_FAILURES,
-            $now + $this->getWait($state->failedAttempts + 1),
-        );
-
-        if (!$isCounted) {
-            $this->passwordHashService->simulateVerification($password);
-            $lockedUntil = $this->accountStateStorage->fetch($credential->accountId)->lockedUntil ?? $now;
-
-            return new AuthenticationAttempt(AuthenticationAttemptResult::Throttled, null, max(1, $lockedUntil - $now));
+        if (!$this->countAttempt($credential->accountId, $state->failedAttempts, $now)) {
+            return $this->refuseWhileLocked($credential->accountId, $password, $now);
         }
 
         if (!$this->checkPassword($credential, $password)) {
@@ -81,7 +72,13 @@ final readonly class CredentialVerificationService implements CredentialVerifica
 
         $this->accountStateStorage->recordSuccess($credential->accountId, $now);
 
-        return new AuthenticationAttempt(AuthenticationAttemptResult::Success, $credential->accountId, 0);
+        // The epoch from before the slow check: a "log out everywhere" during it must still end this login.
+        return new AuthenticationAttempt(
+            AuthenticationAttemptResult::Success,
+            $credential->accountId,
+            0,
+            $state->epoch,
+        );
     }
 
     private function checkLegacyPassword(
@@ -127,6 +124,16 @@ final readonly class CredentialVerificationService implements CredentialVerifica
         return true;
     }
 
+    private function countAttempt(string $accountId, int $failedAttempts, int $now): bool
+    {
+        return $this->accountStateStorage->countAttempt(
+            $accountId,
+            $now,
+            self::THROTTLE_FAILURES,
+            $now + $this->getWait($failedAttempts + 1),
+        );
+    }
+
     /**
      * 60 s at the 5th failure in a row, then 120, 240, 480, then 900 from the 9th on. Below the 5th the storage sets
      * no lock.
@@ -140,5 +147,17 @@ final readonly class CredentialVerificationService implements CredentialVerifica
         }
 
         return self::THROTTLE_FIRST_SECONDS << $doublings;
+    }
+
+    private function refuseWhileLocked(
+        string $accountId,
+        #[SensitiveParameter]
+        string $password,
+        int $now,
+    ): AuthenticationAttempt {
+        $this->passwordHashService->simulateVerification($password);
+        $lockedUntil = $this->accountStateStorage->fetch($accountId)->lockedUntil ?? $now;
+
+        return new AuthenticationAttempt(AuthenticationAttemptResult::Throttled, null, max(1, $lockedUntil - $now));
     }
 }

@@ -119,6 +119,17 @@ final class LoginServiceTest extends TestCase
         self::assertSame(LoginStatus::MethodNotAvailable, $service->completeSecondFactor('other', '123456')->status);
     }
 
+    public function testLoggingOutEverywhereDuringTheSecondFactorStepEndsTheLogin(): void
+    {
+        $fixture = new AuthFixture();
+        $service = $this->createService($fixture, new FakeSecondFactor('totp', ['42']));
+        $service->login('editor', self::PASSWORD);
+        $fixture->createAuthenticationService()->logoutEverywhere(AuthFixture::ACCOUNT_ID);
+
+        self::assertSame(LoginStatus::NoPendingLogin, $service->completeSecondFactor('totp', '123456')->status);
+        self::assertNull($this->getLoggedInAccountId($fixture));
+    }
+
     public function testWithoutAPendingLoginNothingCompletes(): void
     {
         $fixture = new AuthFixture();

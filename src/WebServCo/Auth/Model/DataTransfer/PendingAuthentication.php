@@ -11,7 +11,7 @@ use WebServCo\Data\Contract\Transfer\DataTransferInterface;
 /**
  * A login whose password was right but which still needs a step. The attempt id is random and new for each
  * pending login, so a second factor can bind its challenge to this attempt only. The remember-me request waits
- * here until the login completes.
+ * here until the login completes; the epoch is the account's when its password was checked.
  */
 final readonly class PendingAuthentication implements DataTransferInterface
 {
@@ -21,6 +21,7 @@ final readonly class PendingAuthentication implements DataTransferInterface
         public PendingStep $step,
         public int $startedAt,
         public RememberLogin $rememberLogin,
+        public int $epoch,
     ) {
     }
 }
