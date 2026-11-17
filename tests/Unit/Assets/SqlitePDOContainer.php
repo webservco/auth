@@ -39,7 +39,7 @@ final class SqlitePDOContainer implements PDOContainerInterface
         CREATE TABLE user_account (
             id INTEGER PRIMARY KEY,
             username TEXT NOT NULL,
-            password TEXT NOT NULL,
+            password TEXT NULL,
             status TEXT NOT NULL,
             role TEXT NULL
         );

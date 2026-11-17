@@ -13,6 +13,7 @@ use WebServCo\Auth\Model\DataTransfer\AccountState;
 use WebServCo\Auth\Model\DataTransfer\AccountTableConfiguration;
 use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
 use WebServCo\Auth\Service\AuthenticationService;
+use WebServCo\Auth\Service\CsrfTokenService;
 use WebServCo\Auth\Service\Storage\PDOAccountStateStorage;
 use WebServCo\Auth\Service\Storage\PDOAccountStorage;
 
@@ -23,6 +24,7 @@ use WebServCo\Auth\Service\Storage\PDOAccountStorage;
 #[UsesClass(Account::class)]
 #[UsesClass(AccountState::class)]
 #[UsesClass(AccountTableConfiguration::class)]
+#[UsesClass(CsrfTokenService::class)]
 #[UsesClass(PDOAccountStateStorage::class)]
 #[UsesClass(PDOAccountStorage::class)]
 #[UsesClass(RealmConfiguration::class)]
@@ -114,6 +116,17 @@ final class AuthenticationServiceTest extends TestCase
 
         self::assertNull($fixture->createAuthenticationService('customer')->getAuthenticatedAccount());
         self::assertNotNull($fixture->createAuthenticationService('admin')->getAuthenticatedAccount());
+    }
+
+    public function testTheLoginGetsANewCsrfToken(): void
+    {
+        $fixture = new AuthFixture();
+        $csrfTokenService = new CsrfTokenService($fixture->getSessionService());
+        $token = $csrfTokenService->getToken();
+        $fixture->createAuthenticationService()->login(AuthFixture::ACCOUNT_ID);
+
+        self::assertFalse($csrfTokenService->isValidToken($token));
+        self::assertNotSame($token, $csrfTokenService->getToken());
     }
 
     /**

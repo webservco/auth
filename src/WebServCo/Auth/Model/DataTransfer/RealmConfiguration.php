@@ -21,12 +21,16 @@ final readonly class RealmConfiguration implements DataTransferInterface
         public int $absoluteTimeout = 43_200,
         public int $pendingTimeout = 300,
     ) {
-        if (preg_match('/^[A-Za-z0-9_-]{1,32}$/', $name) !== 1) {
+        if (preg_match('/^[A-Za-z0-9_-]{1,32}\z/', $name) !== 1) {
             throw new InvalidArgumentException('The realm must be 1 to 32 letters, digits, "_" or "-".');
         }
 
         if ($idleTimeout < 1 || $absoluteTimeout < 1 || $pendingTimeout < 1) {
             throw new InvalidArgumentException('Timeouts must be at least 1 second.');
+        }
+
+        if ($idleTimeout > $absoluteTimeout) {
+            throw new InvalidArgumentException('The idle timeout can not be longer than the absolute timeout.');
         }
     }
 }

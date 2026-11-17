@@ -37,6 +37,14 @@ final class PasswordPolicyServiceTest extends TestCase
         self::assertSame([], (new PasswordPolicyService(8))->check('§±¶•ª º~^`{}|', 'editor'));
     }
 
+    public function testANulByteIsRefused(): void
+    {
+        self::assertSame(
+            [PasswordProblem::InvalidCharacter],
+            (new PasswordPolicyService(8))->check("x7#Lq!pZ\0", 'editor'),
+        );
+    }
+
     public function testMoreThanSeventyTwoBytesIsTooLong(): void
     {
         self::assertSame(

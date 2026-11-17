@@ -117,6 +117,10 @@ final readonly class PasswordPolicyService implements PasswordPolicyServiceInter
             $problems[] = PasswordProblem::ContainsLogin;
         }
 
+        if (str_contains($password, "\0")) {
+            $problems[] = PasswordProblem::InvalidCharacter;
+        }
+
         if ($this->isCommon($password)) {
             $problems[] = PasswordProblem::Common;
         }

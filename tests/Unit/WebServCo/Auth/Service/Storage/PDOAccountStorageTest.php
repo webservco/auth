@@ -85,6 +85,19 @@ final class PDOAccountStorageTest extends TestCase
         self::assertEquals(new Account('42', 'editor', []), $storage->fetchAccount('42'));
     }
 
+    public function testAnAccountWithoutAPasswordHasAnEmptyHash(): void
+    {
+        $pdoContainer = new SqlitePDOContainer();
+        $pdoContainer->getPDO()->exec(
+            "INSERT INTO user_account (id, username, password, status) VALUES (43, 'invited', NULL, 'on')",
+        );
+
+        self::assertEquals(
+            new AccountCredential('43', ''),
+            $this->createStorage($pdoContainer)->fetchCredential('invited'),
+        );
+    }
+
     private function createStorage(SqlitePDOContainer $pdoContainer): PDOAccountStorage
     {
         return new PDOAccountStorage(

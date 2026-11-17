@@ -149,6 +149,18 @@ final class CredentialVerificationServiceTest extends TestCase
         self::assertFalse((new PasswordHashService(4))->needsRehash($this->fetchStoredHash($pdoContainer)));
     }
 
+    public function testAPasswordWithANulByteIsRefusedWithoutAnError(): void
+    {
+        $pdoContainer = $this->createContainer($this->hashPassword(4));
+        $service = $this->createService($pdoContainer);
+        $refused = new AuthenticationAttempt(AuthenticationAttemptResult::InvalidCredentials, null, 0);
+
+        // password_verify() alone accepts it: it ignores what follows the NUL byte.
+        self::assertEquals($refused, $service->verifyCredentials('editor', self::PASSWORD . "\0anything"));
+        // password_hash() alone throws: an error only for unknown logins would tell which ones exist.
+        self::assertEquals($refused, $service->verifyCredentials('nobody', "\0"));
+    }
+
     private function createContainer(string $passwordHash): SqlitePDOContainer
     {
         $pdoContainer = new SqlitePDOContainer();

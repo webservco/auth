@@ -25,6 +25,22 @@ final class RealmConfigurationTest extends TestCase
         self::assertSame('', (new RealmConfiguration('admin.customer'))->name);
     }
 
+    public function testANameEndingWithANewlineIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIs('The realm must be 1 to 32 letters, digits, "_" or "-".');
+
+        self::assertSame('', (new RealmConfiguration("admin\n"))->name);
+    }
+
+    public function testAnIdleTimeoutLongerThanTheAbsoluteOneIsRejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageIs('The idle timeout can not be longer than the absolute timeout.');
+
+        self::assertSame('', (new RealmConfiguration('admin', 7200, 3600))->name);
+    }
+
     public function testATimeoutBelowOneSecondIsRejected(): void
     {
         $this->expectException(InvalidArgumentException::class);

@@ -19,7 +19,9 @@ composer require webservco/auth
 
 ## Usage
 
-One realm per kind of account (`admin`, `customer`…). The account table is the application's own: auth reads it through a mapping and only updates the password column when it upgrades a hash.
+One realm per kind of account (`admin`, `customer`…). The account table is the application's own: auth reads it through a mapping and only updates the password column when it upgrades a hash. The login column should be `UNIQUE` (a login that matches more than one active row is refused), and the password column should take 60 characters or more (`VARCHAR(255)`).
+
+Serve the site over HTTPS only, with the session cookie `Secure`, `HttpOnly` and `SameSite=Lax` (webservco/session's `CookieConfiguration`).
 
 ```php
 use WebServCo\Auth\Factory\AccountStorageFactory;
@@ -49,7 +51,10 @@ $authenticationService = $authenticationServiceFactory->createAuthenticationServ
 
 // Login form.
 $result = $loginService->login($submittedLogin, $submittedPassword);
-// $result->status: LoginStatus::LoggedIn, InvalidCredentials, or Throttled (wait $result->retryAfterSeconds).
+// $result->status: LoginStatus::LoggedIn, InvalidCredentials, or Throttled ($result->retryAfterSeconds, for the log).
+// Show InvalidCredentials and Throttled with the same message, for example "Wrong login or password, or too many
+// attempts: try again in a few minutes". Only existing accounts are throttled, so a different message would tell
+// which logins exist.
 
 // Every protected request: null means "not logged in" (also after a timeout or "log out everywhere").
 $account = $authenticationService->getAuthenticatedAccount(); // ?Account: id, login, attributes
@@ -223,7 +228,8 @@ $passwordPolicyService = new PasswordPolicyService(
     // Optional: Have I Been Pwned's free range API. Only 5 characters of the password's SHA-1 are sent.
     new PwnedPasswordsChecker($httpClient, $requestFactory), // a PSR-18 client and a PSR-17 request factory
 );
-// list of PasswordProblem: TooShort, TooLong (over 72 bytes), ContainsLogin, Common, Breached
+// list of PasswordProblem: TooShort, TooLong (over 72 bytes), ContainsLogin, InvalidCharacter (a NUL byte), Common,
+// Breached
 $problems = $passwordPolicyService->check($newPassword, $login);
 if ($problems === []) {
     $passwordHash = (new PasswordHashService())->hash($newPassword); // Store it in the password column.
@@ -269,10 +275,11 @@ Namespaces are relative to `WebServCo\Auth\`.
 
 ## Notes
 
-- An unknown login, a wrong password and an inactive account give the same result, in the same time.
-- From the 5th failed password in a row the account waits 60 s, doubling up to 15 minutes. It is never locked for good.
+- An unknown login, a wrong password and an inactive account give the same result, in the same time. The same time holds while the stored bcrypt hashes have `PasswordHashService`'s cost (PHP 8.4's default, 12); older hashes get it at their next login.
+- From the 5th failed password in a row the account waits 60 s, doubling up to 15 minutes. It is never locked for good. Attempts are counted before the password check, so parallel requests don't get extra guesses.
 - The second factor comes after the password, and auth checks it for the pending account itself.
-- Each step gets a new session id. The timeouts are checked on the server at every request.
+- Each step gets a new session id and a new CSRF token. The timeouts are checked on the server at every request.
+- After `logoutEverywhere()`, a login whose password was checked before it is refused, even if it completes later.
 - The common-password list is SecLists' 10,000 most common passwords (MIT, see `resources/common-passwords.LICENSE`).
 - Authorization (roles, who may reset MFA) is the application's job. Never log passwords.
 

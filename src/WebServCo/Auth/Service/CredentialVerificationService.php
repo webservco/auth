@@ -17,6 +17,7 @@ use WebServCo\Auth\Model\DataTransfer\AccountCredential;
 use WebServCo\Auth\Model\DataTransfer\AuthenticationAttempt;
 
 use function max;
+use function str_contains;
 
 /**
  * Throttling: from the 5th consecutive failure the account waits 1 minute, doubling up to 15 minutes. A success
@@ -50,6 +51,11 @@ final readonly class CredentialVerificationService implements CredentialVerifica
         #[SensitiveParameter]
         string $password,
     ): AuthenticationAttempt {
+        // bcrypt can't hash a NUL byte (password_hash() throws), and password_verify() ignores what follows one.
+        if (str_contains($password, "\0")) {
+            return new AuthenticationAttempt(AuthenticationAttemptResult::InvalidCredentials, null, 0);
+        }
+
         $credential = $this->accountStorage->fetchCredential($login);
 
         if ($credential === null) {
@@ -82,6 +88,7 @@ final readonly class CredentialVerificationService implements CredentialVerifica
     }
 
     private function checkLegacyPassword(
+        #[SensitiveParameter]
         AccountCredential $credential,
         #[SensitiveParameter]
         string $password,
@@ -102,6 +109,7 @@ final readonly class CredentialVerificationService implements CredentialVerifica
     }
 
     private function checkPassword(
+        #[SensitiveParameter]
         AccountCredential $credential,
         #[SensitiveParameter]
         string $password,

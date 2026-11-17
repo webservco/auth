@@ -27,11 +27,11 @@ final readonly class PDORememberTokenStorage implements RememberTokenStorageInte
         private string $realm,
         private string $tableName = 'auth_remember_token',
     ) {
-        if (preg_match('/^[A-Za-z0-9_-]{1,32}$/', $realm) !== 1) {
+        if (preg_match('/^[A-Za-z0-9_-]{1,32}\z/', $realm) !== 1) {
             throw new InvalidArgumentException('The realm must be 1 to 32 letters, digits, "_" or "-".');
         }
 
-        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $tableName) !== 1) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}\z/', $tableName) !== 1) {
             throw new InvalidArgumentException('Invalid table name.');
         }
     }

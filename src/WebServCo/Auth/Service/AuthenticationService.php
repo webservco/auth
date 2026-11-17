@@ -24,7 +24,7 @@ use function random_bytes;
 
 /**
  * Session keys: `auth.<realm>` for the login, `auth.<realm>.pending` for a pending one. Each state change gets a
- * new session id, so an id known before (session fixation) is worth nothing after.
+ * new session id and CSRF token, so an id or token known before (session fixation) is worth nothing after.
  */
 final readonly class AuthenticationService implements AuthenticationServiceInterface
 {
@@ -105,7 +105,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         }
 
         $now = $this->getTime();
-        $this->sessionService->regenerateId();
+        $this->regenerateSession();
         $this->sessionService->unsetSessionDataItem($this->getPendingKey());
         $this->sessionService->setSessionDataItem(
             $this->getLoginKey(),
@@ -155,7 +155,7 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
             $rememberLogin,
             $epoch ?? $this->accountStateStorage->fetch($accountId)->epoch,
         );
-        $this->sessionService->regenerateId();
+        $this->regenerateSession();
         $this->sessionService->unsetSessionDataItem($this->getLoginKey());
         $this->sessionService->setSessionDataItem(
             $this->getPendingKey(),
@@ -259,6 +259,17 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
         $this->login($accountId);
 
         return $account;
+    }
+
+    /**
+     * A new session id, and a new CSRF token with it: one planted before the login (with a planted session) is worth
+     * nothing after.
+     */
+    private function regenerateSession(): bool
+    {
+        $this->sessionService->unsetSessionDataItem(CsrfTokenService::SESSION_KEY);
+
+        return $this->sessionService->regenerateId();
     }
 
     /**

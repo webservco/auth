@@ -44,7 +44,7 @@ final readonly class AccountTableConfiguration implements DataTransferInterface
 
     private function assertIdentifier(string $identifier): bool
     {
-        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $identifier) !== 1) {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}\z/', $identifier) !== 1) {
             throw new InvalidArgumentException('Invalid table or column name.');
         }
 

@@ -191,7 +191,7 @@ final readonly class LoginService implements LoginServiceInterface
         foreach ($this->secondFactors as $secondFactor) {
             $methodId = $secondFactor->getId();
 
-            if (preg_match('/^[A-Za-z0-9_-]{1,32}$/', $methodId) !== 1 || in_array($methodId, $methodIds, true)) {
+            if (preg_match('/^[A-Za-z0-9_-]{1,32}\z/', $methodId) !== 1 || in_array($methodId, $methodIds, true)) {
                 throw new InvalidArgumentException(
                     'Second factor ids must be unique: 1 to 32 letters, digits, "_" or "-".',
                 );

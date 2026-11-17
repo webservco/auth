@@ -14,6 +14,9 @@ enum PasswordProblem
 
     case ContainsLogin;
 
+    // A NUL byte: bcrypt can't hash it.
+    case InvalidCharacter;
+
     // Over 72 bytes: bcrypt would ignore the rest.
     case TooLong;
 

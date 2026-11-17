@@ -19,7 +19,7 @@ use function random_bytes;
  */
 final readonly class CsrfTokenService implements CsrfTokenServiceInterface
 {
-    private const string SESSION_KEY = 'auth.csrf';
+    public const string SESSION_KEY = 'auth.csrf';
 
     public function __construct(private SessionServiceInterface $sessionService,)
     {

@@ -6,6 +6,7 @@ namespace WebServCo\Auth\Service\Storage;
 
 use Override;
 use PDOStatement;
+use SensitiveParameter;
 use WebServCo\Auth\Contract\Storage\AccountStorageInterface;
 use WebServCo\Auth\Model\DataTransfer\Account;
 use WebServCo\Auth\Model\DataTransfer\AccountCredential;
@@ -19,6 +20,11 @@ use function sprintf;
 /**
  * The names come validated from AccountTableConfiguration and are quoted with backticks (SQLite accepts them too).
  * A login that matches more than one active row is refused: the account would be ambiguous.
+ *
+ * phpcs: "Signature of method should be placed on a single line" conflicts with "Expected 0 blank lines between
+ * attribute and its target, both are on same line": a #[SensitiveParameter] parameter needs a multi-line signature.
+ *
+ * @phpcs:disable SlevomatCodingStandard.Classes.RequireSingleLineMethodSignature.RequiredSingleLineSignature
  */
 final readonly class PDOAccountStorage implements AccountStorageInterface
 {
@@ -73,13 +79,17 @@ final readonly class PDOAccountStorage implements AccountStorageInterface
 
         return new AccountCredential(
             $extraction->getString($row, 'auth_account_id'),
-            $extraction->getString($row, 'auth_password_hash'),
+            // NULL (an account without a password): no hash, so the login is refused like a wrong password.
+            $extraction->getString($row, 'auth_password_hash', ''),
         );
     }
 
     #[Override]
-    public function updatePasswordHash(string $accountId, string $passwordHash): bool
-    {
+    public function updatePasswordHash(
+        string $accountId,
+        #[SensitiveParameter]
+        string $passwordHash,
+    ): bool {
         $statement = $this->prepare(
             sprintf(
                 'UPDATE %s SET %s = ? WHERE %s = ?',
