@@ -120,6 +120,19 @@ final class CredentialVerificationServiceTest extends TestCase
         self::assertTrue((new PasswordHashService(4))->isPasswordHash($this->fetchStoredHash($pdoContainer)));
     }
 
+    public function testAWrongPasswordForALegacyHashIsRefusedAndTheHashKept(): void
+    {
+        $pdoContainer = $this->createContainer(md5(self::PASSWORD));
+        $service = $this->createService(
+            $pdoContainer,
+            new FixedClock(self::START_TIME),
+            new Md5LegacyPasswordVerifier(),
+        );
+
+        self::assertSame(AuthenticationAttemptResult::InvalidCredentials, $this->verify($service, 'wrong password'));
+        self::assertSame(md5(self::PASSWORD), $this->fetchStoredHash($pdoContainer));
+    }
+
     public function testALegacyHashWithoutAVerifierIsRefused(): void
     {
         self::assertSame(

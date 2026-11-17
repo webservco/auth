@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\WebServCo\Auth\Service\Storage;
 
 use InvalidArgumentException;
+use PDOException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -65,6 +66,20 @@ final class PDOAccountStateStorageTest extends TestCase
 
         self::assertSame(0, $customerStorage->fetch(self::ACCOUNT_ID)->epoch);
         self::assertSame(1, $adminStorage->fetch(self::ACCOUNT_ID)->epoch);
+    }
+
+    public function testADatabaseErrorIsNotTakenForAnExistingRow(): void
+    {
+        $storage = new PDOAccountStateStorage(
+            (new DataExtractionContainerFactory())->createDataExtractionContainer(false),
+            new SqlitePDOContainer(),
+            'admin',
+            'missing_table',
+        );
+
+        $this->expectException(PDOException::class);
+
+        $storage->recordFailure(self::ACCOUNT_ID);
     }
 
     public function testAnAccountIdLongerThanTheColumnIsRejected(): void
