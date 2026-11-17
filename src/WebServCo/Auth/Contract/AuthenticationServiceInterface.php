@@ -15,11 +15,6 @@ use WebServCo\Auth\Model\RememberLogin;
 interface AuthenticationServiceInterface
 {
     /**
-     * Pending → logged in, with a new session id. False when nothing valid is pending.
-     */
-    public function completePendingAuthentication(): bool;
-
-    /**
      * The logged-in account, or null: not logged in, idle or absolute timeout, logged out everywhere, or the account
      * is no longer active. Call it on every request; it also refreshes the idle time. A pending login is never
      * returned here. Without a valid session login, a remember-me cookie (when the realm has remember-me) logs in

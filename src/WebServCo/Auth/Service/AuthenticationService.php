@@ -40,18 +40,6 @@ final readonly class AuthenticationService implements AuthenticationServiceInter
     }
 
     #[Override]
-    public function completePendingAuthentication(): bool
-    {
-        $pendingAuthentication = $this->getPendingAuthentication();
-
-        if ($pendingAuthentication === null) {
-            return false;
-        }
-
-        return $this->login($pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
-    }
-
-    #[Override]
     public function getAuthenticatedAccount(): ?Account
     {
         $entry = $this->readEntry($this->getLoginKey());

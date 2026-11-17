@@ -11,7 +11,8 @@ use WebServCo\Auth\Model\SecondFactorResult;
 use function in_array;
 
 /**
- * Accepts "123456". Records each call with the account id and attempt id it received.
+ * Accepts "123456", for a challenge or a setup (which enables the method). Records each call with the account id and
+ * attempt id it received.
  */
 final class FakeSecondFactor implements SecondFactorInterface
 {
@@ -28,6 +29,20 @@ final class FakeSecondFactor implements SecondFactorInterface
         private array $enabledAccountIds,
         private SecondFactorResult $resultForAWrongAnswer = SecondFactorResult::Rejected,
     ) {
+    }
+
+    #[Override]
+    public function confirmSetup(string $accountId, string $attemptId, string $response): SecondFactorResult
+    {
+        $this->calls[] = 'setup ' . $accountId . ' ' . $attemptId;
+
+        if ($response !== '123456') {
+            return $this->resultForAWrongAnswer;
+        }
+
+        $this->enable($accountId);
+
+        return SecondFactorResult::Accepted;
     }
 
     public function enable(string $accountId): void

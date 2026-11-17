@@ -41,13 +41,13 @@ final class AuthenticationServicePendingTest extends TestCase
         self::assertSame(AuthFixture::START_TIME, $started->startedAt);
     }
 
-    public function testCompletingAPendingLoginLogsIn(): void
+    public function testALoginEndsThePendingLogin(): void
     {
         $fixture = new AuthFixture();
         $service = $fixture->createAuthenticationService();
         $service->startPendingAuthentication(AuthFixture::ACCOUNT_ID, PendingStep::SecondFactor);
 
-        self::assertTrue($service->completePendingAuthentication());
+        self::assertTrue($service->login(AuthFixture::ACCOUNT_ID));
         self::assertSame(2, $fixture->getSessionService()->getRegenerations());
         self::assertSame('42', $service->getAuthenticatedAccount()?->id);
         self::assertNull($service->getPendingAuthentication());
@@ -65,15 +65,6 @@ final class AuthenticationServicePendingTest extends TestCase
         $fixture->advanceClock(1);
 
         self::assertNull($service->getPendingAuthentication());
-        self::assertFalse($service->completePendingAuthentication());
-    }
-
-    public function testCompletingWithoutAPendingLoginFails(): void
-    {
-        $fixture = new AuthFixture();
-
-        self::assertFalse($fixture->createAuthenticationService()->completePendingAuthentication());
-        self::assertSame(0, $fixture->getSessionService()->getRegenerations());
     }
 
     public function testAPendingLoginReplacesALogin(): void

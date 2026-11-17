@@ -73,28 +73,38 @@ final readonly class LoginService implements LoginServiceInterface
             $response,
         );
 
-        return match ($result) {
-            SecondFactorResult::Accepted => $this->completeLogin(),
-            SecondFactorResult::Locked => new LoginResult(LoginStatus::SecondFactorLocked),
-            SecondFactorResult::Rejected => new LoginResult(LoginStatus::SecondFactorRejected),
-        };
+        return $this->completeOn($result, $pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
     }
 
+    /**
+     * The proof comes in this call: a method enabled elsewhere (another session finishing its own setup) is not
+     * enough.
+     */
     #[Override]
-    public function completeSecondFactorSetup(string $methodId): LoginResult
-    {
+    public function completeSecondFactorSetup(
+        string $methodId,
+        #[SensitiveParameter]
+        string $response,
+    ): LoginResult {
         $pendingAuthentication = $this->authenticationService->getPendingAuthentication();
 
         if ($pendingAuthentication === null || $pendingAuthentication->step !== PendingStep::SecondFactorSetup) {
             return new LoginResult(LoginStatus::NoPendingLogin);
         }
 
-        // The application's setup page enabled the method; check that it really is enabled for this account.
-        if ($this->findEnabledMethod($pendingAuthentication->accountId, $methodId) === null) {
+        $secondFactor = $this->findMethod($methodId);
+
+        if ($secondFactor === null) {
             return new LoginResult(LoginStatus::MethodNotAvailable);
         }
 
-        return $this->completeLogin();
+        $result = $secondFactor->confirmSetup(
+            $pendingAuthentication->accountId,
+            $pendingAuthentication->attemptId,
+            $response,
+        );
+
+        return $this->completeOn($result, $pendingAuthentication->accountId, $pendingAuthentication->rememberLogin);
     }
 
     #[Override]
@@ -195,23 +205,47 @@ final readonly class LoginService implements LoginServiceInterface
         return true;
     }
 
-    private function completeLogin(): LoginResult
+    private function completeLogin(string $accountId, RememberLogin $rememberLogin): LoginResult
     {
-        if (!$this->authenticationService->completePendingAuthentication()) {
+        if (!$this->authenticationService->login($accountId, $rememberLogin)) {
             return new LoginResult(LoginStatus::NoPendingLogin);
         }
 
         return new LoginResult(LoginStatus::LoggedIn);
     }
 
+    /**
+     * The pending login's account and remember-me request complete the login when the method accepted.
+     */
+    private function completeOn(
+        SecondFactorResult $result,
+        string $accountId,
+        RememberLogin $rememberLogin,
+    ): LoginResult {
+        return match ($result) {
+            SecondFactorResult::Accepted => $this->completeLogin($accountId, $rememberLogin),
+            SecondFactorResult::Locked => new LoginResult(LoginStatus::SecondFactorLocked),
+            SecondFactorResult::Rejected => new LoginResult(LoginStatus::SecondFactorRejected),
+        };
+    }
+
     private function findEnabledMethod(string $accountId, string $methodId): ?SecondFactorInterface
     {
-        foreach ($this->secondFactors as $secondFactor) {
-            if ($secondFactor->getId() !== $methodId || !$secondFactor->isEnabled($accountId)) {
-                continue;
-            }
+        $secondFactor = $this->findMethod($methodId);
 
-            return $secondFactor;
+        if ($secondFactor === null || !$secondFactor->isEnabled($accountId)) {
+            return null;
+        }
+
+        return $secondFactor;
+    }
+
+    private function findMethod(string $methodId): ?SecondFactorInterface
+    {
+        foreach ($this->secondFactors as $secondFactor) {
+            if ($secondFactor->getId() === $methodId) {
+                return $secondFactor;
+            }
         }
 
         return null;

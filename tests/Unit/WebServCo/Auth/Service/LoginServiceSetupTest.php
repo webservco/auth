@@ -49,7 +49,7 @@ use function array_values;
 #[UsesClass(RealmConfiguration::class)]
 final class LoginServiceSetupTest extends TestCase
 {
-    public function testTheLoginCompletesOnlyOnceTheMethodIsEnabled(): void
+    public function testTheSetupCompletesWithTheConfirmingResponse(): void
     {
         $fixture = new AuthFixture();
         $totp = new FakeSecondFactor('totp', []);
@@ -57,13 +57,31 @@ final class LoginServiceSetupTest extends TestCase
 
         self::assertSame(LoginStatus::SecondFactorSetupRequired, $service->login('editor', 'right password')->status);
         self::assertSame(['totp'], $service->getSecondFactorMethods());
-        self::assertSame(LoginStatus::MethodNotAvailable, $service->completeSecondFactorSetup('totp')->status);
+        self::assertSame(LoginStatus::MethodNotAvailable, $service->completeSecondFactorSetup('sms', '123456')->status);
+        self::assertSame(LoginStatus::SecondFactorRejected, $service->completeSecondFactorSetup('totp', '0')->status);
+        self::assertNull($this->getLoggedInAccountId($fixture));
 
-        // The application's setup page (for example webservco/mfa's enrollment) enables the method.
+        $attemptId = $this->getAttemptId($fixture);
+
+        self::assertSame(LoginStatus::LoggedIn, $service->completeSecondFactorSetup('totp', '123456')->status);
+        self::assertSame('42', $this->getLoggedInAccountId($fixture));
+        self::assertTrue($totp->isEnabled('42'));
+        self::assertSame(['setup 42 ' . $attemptId, 'setup 42 ' . $attemptId], $totp->getCalls());
+    }
+
+    /**
+     * Someone else with the password waits at the setup step while the real user sets up MFA in their own session.
+     */
+    public function testASetupFinishedInAnotherSessionDoesNotCompleteThisOne(): void
+    {
+        $fixture = new AuthFixture();
+        $totp = new FakeSecondFactor('totp', []);
+        $service = $this->createService($fixture, $totp);
+        $service->login('editor', 'right password');
         $totp->enable('42');
 
-        self::assertSame(LoginStatus::LoggedIn, $service->completeSecondFactorSetup('totp')->status);
-        self::assertSame('42', $this->getLoggedInAccountId($fixture));
+        self::assertSame(LoginStatus::SecondFactorRejected, $service->completeSecondFactorSetup('totp', '')->status);
+        self::assertNull($this->getLoggedInAccountId($fixture));
     }
 
     public function testASetupCanNotBeCompletedLikeAChallenge(): void
@@ -80,7 +98,7 @@ final class LoginServiceSetupTest extends TestCase
         $service = $this->createService(new AuthFixture(), new FakeSecondFactor('totp', ['42']));
         $service->login('editor', 'right password');
 
-        self::assertSame(LoginStatus::NoPendingLogin, $service->completeSecondFactorSetup('totp')->status);
+        self::assertSame(LoginStatus::NoPendingLogin, $service->completeSecondFactorSetup('totp', '123456')->status);
     }
 
     public function testTheRequiredPolicyNeedsAMethod(): void
@@ -129,6 +147,17 @@ final class LoginServiceSetupTest extends TestCase
             SecondFactorPolicy::Required,
             array_values($secondFactors),
         );
+    }
+
+    private function getAttemptId(AuthFixture $fixture): string
+    {
+        $pendingAuthentication = $fixture->createAuthenticationService()->getPendingAuthentication();
+
+        if ($pendingAuthentication === null) {
+            self::fail('There is no pending login.');
+        }
+
+        return $pendingAuthentication->attemptId;
     }
 
     /**

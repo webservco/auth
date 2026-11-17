@@ -18,9 +18,10 @@ interface LoginServiceInterface
     public function completeSecondFactor(string $methodId, string $response): LoginResult;
 
     /**
-     * After the application's setup page: completes the login once the method is enabled for the pending account.
+     * The setup step: the application's page shows the new method to the pending account (a QR code from
+     * webservco/mfa) and passes the confirming response here. The method is enabled and the login completes.
      */
-    public function completeSecondFactorSetup(string $methodId): LoginResult;
+    public function completeSecondFactorSetup(string $methodId, string $response): LoginResult;
 
     /**
      * Ids of the methods the pending login can use: the enabled ones, or all of them for a setup. [] when nothing is

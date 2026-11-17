@@ -26,14 +26,14 @@ use WebServCo\Auth\Service\LoginService;
 #[UsesClass(PendingAuthentication::class)]
 final class LoginServiceConcurrencyTest extends TestCase
 {
-    public function testTheLoginFailsWhenThePendingStateEndsDuringTheCheck(): void
+    public function testARefusedLoginAfterTheSecondFactorIsReported(): void
     {
         $authenticationService = self::createStub(AuthenticationServiceInterface::class);
         $authenticationService->method('getPendingAuthentication')->willReturn(
             new PendingAuthentication('42', 'attempt', PendingStep::SecondFactor, 1_800_000_000, RememberLogin::No),
         );
-        // The pending login expired, or another request completed it, after the code was accepted.
-        $authenticationService->method('completePendingAuthentication')->willReturn(false);
+        // The login was refused after the code was accepted.
+        $authenticationService->method('login')->willReturn(false);
 
         $service = new LoginService(
             $authenticationService,

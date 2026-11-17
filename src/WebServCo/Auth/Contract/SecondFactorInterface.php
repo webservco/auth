@@ -14,6 +14,13 @@ use WebServCo\Auth\Model\SecondFactorResult;
 interface SecondFactorInterface
 {
     /**
+     * The setup step: checks the response that confirms the account's new method (the first code from an
+     * authenticator app) and enables the method. It runs within the pending login, so a setup finished in another
+     * session never completes this one. Keep what the setup returns for the page (webservco/mfa's recovery codes).
+     */
+    public function confirmSetup(string $accountId, string $attemptId, string $response): SecondFactorResult;
+
+    /**
      * A stable id, unique among the methods given to LoginService: "totp", "email", "passkey"...
      */
     public function getId(): string;

@@ -67,10 +67,29 @@ use WebServCo\Auth\Model\SecondFactorResult;
 use WebServCo\Mfa\Contract\MfaServiceInterface;
 use WebServCo\Mfa\Model\VerificationResult;
 
-final readonly class TotpSecondFactor implements SecondFactorInterface
+final class TotpSecondFactor implements SecondFactorInterface
 {
-    public function __construct(private MfaServiceInterface $mfaService)
+    /**
+     * @var list<string>
+     */
+    private array $recoveryCodes = [];
+
+    public function __construct(private readonly MfaServiceInterface $mfaService)
     {
+    }
+
+    public function confirmSetup(string $accountId, string $attemptId, #[\SensitiveParameter] string $response): SecondFactorResult
+    {
+        // Enables MFA when the first code is right.
+        $recoveryCodes = $this->mfaService->confirmEnrollment($accountId, $response);
+
+        if ($recoveryCodes === null) {
+            return SecondFactorResult::Rejected;
+        }
+
+        $this->recoveryCodes = $recoveryCodes;
+
+        return SecondFactorResult::Accepted;
     }
 
     public function getId(): string
@@ -88,7 +107,17 @@ final readonly class TotpSecondFactor implements SecondFactorInterface
         return ''; // Nothing to prepare: the code is in the user's app.
     }
 
-    public function verify(string $accountId, string $attemptId, string $response): SecondFactorResult
+    /**
+     * After a completed setup: show them once.
+     *
+     * @return list<string>
+     */
+    public function getRecoveryCodes(): array
+    {
+        return $this->recoveryCodes;
+    }
+
+    public function verify(string $accountId, string $attemptId, #[\SensitiveParameter] string $response): SecondFactorResult
     {
         return match ($this->mfaService->verify($accountId, $response)) {
             VerificationResult::Accepted, VerificationResult::AcceptedRecoveryCode => SecondFactorResult::Accepted,
@@ -103,20 +132,32 @@ final readonly class TotpSecondFactor implements SecondFactorInterface
 use WebServCo\Auth\Model\SecondFactorPolicy;
 
 // Required: every account needs a second factor. Optional: only accounts with MFA enabled are asked.
+$totpSecondFactor = new TotpSecondFactor($mfaService);
 $loginService = $loginServiceFactory->createLoginService(
     $realm,
     $accountTable,
     SecondFactorPolicy::Required,
-    [new TotpSecondFactor($mfaService)],
+    [$totpSecondFactor],
 );
 
 $result = $loginService->login($submittedLogin, $submittedPassword);
+
 // LoginStatus::SecondFactorRequired: ask for a code (methods: $loginService->getSecondFactorMethods()).
-$result = $loginService->completeSecondFactor('totp', $submittedCode); // LoggedIn, SecondFactorRejected or Locked
-// LoginStatus::SecondFactorSetupRequired: enroll the pending account with webservco/mfa
-// ($authenticationService->getPendingAuthentication()->accountId), then:
-$result = $loginService->completeSecondFactorSetup('totp');
+$result = $loginService->completeSecondFactor('totp', $submittedCode);
+
+// LoginStatus::SecondFactorSetupRequired: the setup page shows the QR code for the pending account…
+$pendingAccountId = $authenticationService->getPendingAuthentication()?->accountId;
+$enrollment = $mfaService->startEnrollment($pendingAccountId, $label);
+// …and its form sends the first code from the app. Done here, not on the setup page: the code proves the setup
+// belongs to this login.
+$result = $loginService->completeSecondFactorSetup('totp', $submittedCode);
+// LoggedIn: show $totpSecondFactor->getRecoveryCodes() once.
+
+// Both steps: LoggedIn; SecondFactorRejected (ask again); SecondFactorLocked (too many wrong codes, wait);
+// MethodNotAvailable (unknown method, or not set up for the account); NoPendingLogin (expired: log in again).
 ```
+
+With `SecondFactorPolicy::Required`, an account without a second factor is set up by whoever logs in first with its password. Switch a realm to Required (or reset someone's MFA) only for passwords you trust.
 
 ### Old password hashes
 
