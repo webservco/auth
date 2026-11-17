@@ -27,7 +27,7 @@
         "webservco"
     ],
     "license" : "MIT",
-    "name" : "webservco/component-skeleton",
+    "name" : "webservco/auth",
     "require": {
         "php" : "^8.4"
     },
