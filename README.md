@@ -57,8 +57,6 @@ $authenticationService->logout();
 $authenticationService->logoutEverywhere($account->id); // after a password change or an MFA reset
 ```
 
-New and changed passwords: `(new PasswordHashService())->hash($password)` (`Service\PasswordHashService`).
-
 ### Second factor with webservco/mfa
 
 auth doesn't depend on mfa. The application plugs it in with a small adapter:
@@ -120,6 +118,30 @@ $result = $loginService->completeSecondFactor('totp', $submittedCode); // Logged
 $result = $loginService->completeSecondFactorSetup('totp');
 ```
 
+### New passwords
+
+Check a password when it is set or changed (not at login), then hash it:
+
+```php
+use WebServCo\Auth\Service\PasswordHashService;
+use WebServCo\Auth\Service\PasswordPolicyService;
+use WebServCo\Auth\Service\PwnedPasswordsChecker;
+
+// 8 characters where a second factor is required, 15 where the password is the only factor. Every character is
+// allowed and no mix of types is required (NIST SP 800-63B-4).
+// \WebServCo\Auth\Contract\PasswordPolicyServiceInterface
+$passwordPolicyService = new PasswordPolicyService(
+    8,
+    // Optional: Have I Been Pwned's free range API. Only 5 characters of the password's SHA-1 are sent.
+    new PwnedPasswordsChecker($httpClient, $requestFactory), // a PSR-18 client and a PSR-17 request factory
+);
+// list of PasswordProblem: TooShort, TooLong (over 72 bytes), ContainsLogin, Common, Breached
+$problems = $passwordPolicyService->check($newPassword, $login);
+if ($problems === []) {
+    $passwordHash = (new PasswordHashService())->hash($newPassword); // Store it in the password column.
+}
+```
+
 ---
 
 ## Contracts
@@ -131,6 +153,8 @@ $result = $loginService->completeSecondFactorSetup('totp');
 | `Contract\SecondFactorInterface` | the application's adapter | One second-factor method: `totp` today, others later. |
 | `Contract\LegacyPasswordVerifierInterface` | the application's | Old hashes (for example MD5), replaced at the next login. |
 | `Contract\PasswordHashServiceInterface` | `Service\PasswordHashService` | `password_hash()` with PHP's default settings. |
+| `Contract\PasswordPolicyServiceInterface` | `Service\PasswordPolicyService` | Checks a new password: length, login, common list, breaches. |
+| `Contract\BreachedPasswordCheckerInterface` | `Service\PwnedPasswordsChecker` | Have I Been Pwned's range API, through any PSR-18 client. |
 | `Contract\LoginServiceFactoryInterface` | `Factory\LoginServiceFactory` | Creates `LoginServiceInterface`; also takes the policy, the factors and a legacy verifier. |
 | `Contract\AuthenticationServiceFactoryInterface` | `Factory\AuthenticationServiceFactory` | Creates `AuthenticationServiceInterface`. |
 
@@ -144,6 +168,7 @@ Namespaces are relative to `WebServCo\Auth\`.
 - From the 5th failed password in a row the account waits 60 s, doubling up to 15 minutes. It is never locked for good.
 - The second factor comes after the password, and auth checks it for the pending account itself.
 - Each step gets a new session id. The timeouts are checked on the server at every request.
+- The common-password list is SecLists' 10,000 most common passwords (MIT, see `resources/common-passwords.LICENSE`).
 - Authorization (roles, who may reset MFA) is the application's job. Never log passwords.
 
 ---
