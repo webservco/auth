@@ -12,6 +12,13 @@ use WebServCo\Auth\Model\DataTransfer\AccountState;
 interface AccountStateStorageInterface
 {
     /**
+     * Counts a login attempt before its password is checked, in one statement: false (nothing counted) while the
+     * account is locked, so parallel requests can't pass a lock together. The attempt that reaches $lockFrom
+     * attempts in a row locks the account until $lockedUntil; a success unlocks it. The count stops at 65535.
+     */
+    public function countAttempt(string $accountId, int $now, int $lockFrom, int $lockedUntil): bool;
+
+    /**
      * A zero state when the account has no row yet.
      */
     public function fetch(string $accountId): AccountState;
@@ -21,15 +28,8 @@ interface AccountStateStorageInterface
      */
     public function incrementEpoch(string $accountId): int;
 
-    public function lock(string $accountId, int $lockedUntil): bool;
-
     /**
-     * Adds one failure and returns the new count.
-     */
-    public function recordFailure(string $accountId): int;
-
-    /**
-     * Clears the failures and the lock, and records the login time.
+     * Clears the attempts and the lock, and records the login time.
      */
     public function recordSuccess(string $accountId, int $loginAt): bool;
 }

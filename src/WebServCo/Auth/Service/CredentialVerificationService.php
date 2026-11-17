@@ -16,6 +16,8 @@ use WebServCo\Auth\Model\AuthenticationAttemptResult;
 use WebServCo\Auth\Model\DataTransfer\AccountCredential;
 use WebServCo\Auth\Model\DataTransfer\AuthenticationAttempt;
 
+use function max;
+
 /**
  * Throttling: from the 5th consecutive failure the account waits 1 minute, doubling up to 15 minutes. A success
  * resets the count. There is no permanent lock, which would let anyone lock a user out.
@@ -57,17 +59,23 @@ final readonly class CredentialVerificationService implements CredentialVerifica
         }
 
         $now = $this->clock->now()->getTimestamp();
-        $lockedUntil = $this->accountStateStorage->fetch($credential->accountId)->lockedUntil;
+        $state = $this->accountStateStorage->fetch($credential->accountId);
+        // Counted before the slow password check: a success clears the count again.
+        $isCounted = $this->accountStateStorage->countAttempt(
+            $credential->accountId,
+            $now,
+            self::THROTTLE_FAILURES,
+            $now + $this->getWait($state->failedAttempts + 1),
+        );
 
-        if ($lockedUntil !== null && $lockedUntil > $now) {
+        if (!$isCounted) {
             $this->passwordHashService->simulateVerification($password);
+            $lockedUntil = $this->accountStateStorage->fetch($credential->accountId)->lockedUntil ?? $now;
 
-            return new AuthenticationAttempt(AuthenticationAttemptResult::Throttled, null, $lockedUntil - $now);
+            return new AuthenticationAttempt(AuthenticationAttemptResult::Throttled, null, max(1, $lockedUntil - $now));
         }
 
         if (!$this->checkPassword($credential, $password)) {
-            $this->recordFailure($credential->accountId, $now);
-
             return new AuthenticationAttempt(AuthenticationAttemptResult::InvalidCredentials, null, 0);
         }
 
@@ -119,22 +127,18 @@ final readonly class CredentialVerificationService implements CredentialVerifica
         return true;
     }
 
-    private function recordFailure(string $accountId, int $now): bool
+    /**
+     * 60 s at the 5th failure in a row, then 120, 240, 480, then 900 from the 9th on. Below the 5th the storage sets
+     * no lock.
+     */
+    private function getWait(int $failedAttempts): int
     {
-        $failedAttempts = $this->accountStateStorage->recordFailure($accountId);
+        $doublings = max(0, $failedAttempts - self::THROTTLE_FAILURES);
 
-        if ($failedAttempts < self::THROTTLE_FAILURES) {
-            return true;
+        if ($doublings >= 4) {
+            return self::THROTTLE_MAX_SECONDS;
         }
 
-        // 60 s at the 5th failure, then 120, 240, 480, then 900 from the 9th on.
-        $doublings = $failedAttempts - self::THROTTLE_FAILURES;
-        $wait = self::THROTTLE_MAX_SECONDS;
-
-        if ($doublings < 4) {
-            $wait = self::THROTTLE_FIRST_SECONDS << $doublings;
-        }
-
-        return $this->accountStateStorage->lock($accountId, $now + $wait);
+        return self::THROTTLE_FIRST_SECONDS << $doublings;
     }
 }

@@ -27,23 +27,38 @@ final class PDOAccountStateStorageTest extends TestCase
         self::assertEquals(new AccountState(0, null, 0, null), $this->createStorage()->fetch(self::ACCOUNT_ID));
     }
 
-    public function testFailuresAreCountedAndLocked(): void
+    public function testTheAttemptThatReachesTheLimitLocksAndTheLockRefusesTheNextOnes(): void
     {
         $storage = $this->createStorage();
 
-        self::assertSame(1, $storage->recordFailure(self::ACCOUNT_ID));
-        self::assertSame(2, $storage->recordFailure(self::ACCOUNT_ID));
+        self::assertTrue($storage->countAttempt(self::ACCOUNT_ID, 1000, 2, 1060));
+        self::assertEquals(new AccountState(1, null, 0, null), $storage->fetch(self::ACCOUNT_ID));
+        self::assertTrue($storage->countAttempt(self::ACCOUNT_ID, 1000, 2, 1060));
+        self::assertEquals(new AccountState(2, 1060, 0, null), $storage->fetch(self::ACCOUNT_ID));
 
-        $storage->lock(self::ACCOUNT_ID, 5000);
+        // A parallel request, or a later one with a shorter lock: neither counted nor shortening the lock.
+        self::assertFalse($storage->countAttempt(self::ACCOUNT_ID, 1059, 2, 1070));
+        self::assertEquals(new AccountState(2, 1060, 0, null), $storage->fetch(self::ACCOUNT_ID));
 
-        self::assertEquals(new AccountState(2, 5000, 0, null), $storage->fetch(self::ACCOUNT_ID));
+        self::assertTrue($storage->countAttempt(self::ACCOUNT_ID, 1060, 2, 1180));
+        self::assertEquals(new AccountState(3, 1180, 0, null), $storage->fetch(self::ACCOUNT_ID));
+    }
+
+    public function testTheCountStopsAtTheColumnMaximum(): void
+    {
+        $pdoContainer = new SqlitePDOContainer();
+        $storage = $this->createStorage('admin', $pdoContainer);
+        $storage->countAttempt(self::ACCOUNT_ID, 1000, 5, 1060);
+        $pdoContainer->getPDO()->exec('UPDATE auth_account_state SET failed_attempts = 65535');
+
+        self::assertTrue($storage->countAttempt(self::ACCOUNT_ID, 1000, 5, 1900));
+        self::assertEquals(new AccountState(65_535, 1900, 0, null), $storage->fetch(self::ACCOUNT_ID));
     }
 
     public function testASuccessClearsTheFailuresAndRecordsTheLogin(): void
     {
         $storage = $this->createStorage();
-        $storage->recordFailure(self::ACCOUNT_ID);
-        $storage->lock(self::ACCOUNT_ID, 5000);
+        $storage->countAttempt(self::ACCOUNT_ID, 1000, 1, 5000);
         $storage->recordSuccess(self::ACCOUNT_ID, 6000);
 
         self::assertEquals(new AccountState(0, null, 0, 6000), $storage->fetch(self::ACCOUNT_ID));
@@ -79,7 +94,7 @@ final class PDOAccountStateStorageTest extends TestCase
 
         $this->expectException(PDOException::class);
 
-        $storage->recordFailure(self::ACCOUNT_ID);
+        $storage->countAttempt(self::ACCOUNT_ID, 1000, 5, 1060);
     }
 
     public function testAnAccountIdLongerThanTheColumnIsRejected(): void
@@ -87,7 +102,7 @@ final class PDOAccountStateStorageTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageIs('The account id must be 1 to 64 characters long.');
 
-        $this->createStorage()->recordFailure(str_repeat('1', 65));
+        $this->createStorage()->countAttempt(str_repeat('1', 65), 1000, 5, 1060);
     }
 
     public function testAnInvalidRealmIsRejected(): void

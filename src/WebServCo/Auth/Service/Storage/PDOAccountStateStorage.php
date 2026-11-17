@@ -38,6 +38,25 @@ final readonly class PDOAccountStateStorage implements AccountStateStorageInterf
         }
     }
 
+    /**
+     * `locked_until` comes first: MySQL evaluates the assignments in order, so it still reads the old count, like
+     * SQLite and the SQL standard. The count is compared as a column: PDO binds strings, and SQLite converts a string
+     * for a column comparison but not for one with an expression (`failed_attempts + 1`).
+     */
+    #[Override]
+    public function countAttempt(string $accountId, int $now, int $lockFrom, int $lockedUntil): bool
+    {
+        $this->ensureRow($accountId);
+
+        return $this->execute(
+            'UPDATE {table} SET'
+            . ' locked_until = CASE WHEN failed_attempts >= ? THEN ? ELSE NULL END,'
+            . ' failed_attempts = CASE WHEN failed_attempts < 65535 THEN failed_attempts + 1 ELSE failed_attempts END'
+            . ' WHERE realm = ? AND account_id = ? AND (locked_until IS NULL OR locked_until <= ?)',
+            [$lockFrom - 1, $lockedUntil, $this->realm, $accountId, $now],
+        )->rowCount() === 1;
+    }
+
     #[Override]
     public function fetch(string $accountId): AccountState
     {
@@ -73,30 +92,6 @@ final readonly class PDOAccountStateStorage implements AccountStateStorageInterf
         );
 
         return $this->fetch($accountId)->epoch;
-    }
-
-    #[Override]
-    public function lock(string $accountId, int $lockedUntil): bool
-    {
-        $this->ensureRow($accountId);
-        $this->execute(
-            'UPDATE {table} SET locked_until = ? WHERE realm = ? AND account_id = ?',
-            [$lockedUntil, $this->realm, $accountId],
-        );
-
-        return true;
-    }
-
-    #[Override]
-    public function recordFailure(string $accountId): int
-    {
-        $this->ensureRow($accountId);
-        $this->execute(
-            'UPDATE {table} SET failed_attempts = failed_attempts + 1 WHERE realm = ? AND account_id = ?',
-            [$this->realm, $accountId],
-        );
-
-        return $this->fetch($accountId)->failedAttempts;
     }
 
     #[Override]
