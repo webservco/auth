@@ -280,6 +280,7 @@ Namespaces are relative to `WebServCo\Auth\`.
 - The second factor comes after the password, and auth checks it for the pending account itself.
 - Each step gets a new session id and a new CSRF token. The timeouts are checked on the server at every request.
 - After `logoutEverywhere()`, a login whose password was checked before it is refused, even if it completes later.
+- To unlock an account by hand, set `failed_attempts = 0, locked_until = NULL` in `auth_account_state`. Never delete the row: that resets the epoch to 0 and brings back sessions and remember-me tokens that "log out everywhere" ended.
 - The common-password list is SecLists' 10,000 most common passwords (MIT, see `resources/common-passwords.LICENSE`).
 - Authorization (roles, who may reset MFA) is the application's job. Never log passwords.
 

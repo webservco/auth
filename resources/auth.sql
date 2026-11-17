@@ -1,4 +1,6 @@
--- webservco/auth table for MariaDB and MySQL. Times are Unix seconds.
+-- webservco/auth tables for MariaDB and MySQL. Times are Unix seconds.
+-- Never delete an auth_account_state row (to unlock, reset failed_attempts and locked_until): the epoch would go
+-- back to 0 and revive sessions and remember-me tokens that "log out everywhere" ended.
 -- The application's own account table is only read (and its password column updated on rehash).
 -- Binary collation: account ids compare exactly, as in the SQLite tests.
 
