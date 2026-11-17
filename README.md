@@ -142,6 +142,21 @@ if ($problems === []) {
 }
 ```
 
+### CSRF tokens
+
+Every form that changes something, the login form included, carries the session's token:
+
+```php
+use WebServCo\Auth\Service\CsrfTokenService;
+
+// \WebServCo\Auth\Contract\CsrfTokenServiceInterface
+$csrfTokenService = new CsrfTokenService($sessionService);
+// In the form:
+printf('<input type="hidden" name="csrf" value="%s">', $csrfTokenService->getToken());
+// On submit, before anything else; answer 403 when it fails:
+$isValid = $csrfTokenService->isValidToken($submittedToken);
+```
+
 ---
 
 ## Contracts
@@ -155,6 +170,7 @@ if ($problems === []) {
 | `Contract\PasswordHashServiceInterface` | `Service\PasswordHashService` | `password_hash()` with PHP's default settings. |
 | `Contract\PasswordPolicyServiceInterface` | `Service\PasswordPolicyService` | Checks a new password: length, login, common list, breaches. |
 | `Contract\BreachedPasswordCheckerInterface` | `Service\PwnedPasswordsChecker` | Have I Been Pwned's range API, through any PSR-18 client. |
+| `Contract\CsrfTokenServiceInterface` | `Service\CsrfTokenService` | One CSRF token per session for forms. |
 | `Contract\LoginServiceFactoryInterface` | `Factory\LoginServiceFactory` | Creates `LoginServiceInterface`; also takes the policy, the factors and a legacy verifier. |
 | `Contract\AuthenticationServiceFactoryInterface` | `Factory\AuthenticationServiceFactory` | Creates `AuthenticationServiceInterface`. |
 
