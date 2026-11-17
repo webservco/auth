@@ -20,7 +20,7 @@
             "dealerdirect/phpcodesniffer-composer-installer": true
         }
     },
-    "description" : "A PHP component/library.",
+    "description" : "A PHP component/library. Password authentication and authenticated sessions for any account table, with throttling, legacy password upgrade, session timeouts and an optional second factor.",
     "homepage" : "https://webserv.co",
     "keywords" : [
         "component",

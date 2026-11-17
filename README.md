@@ -1,29 +1,11 @@
-<!--
-This README is the template for every webservco component. Fill it in when you create a component from the skeleton.
-
-The clone workflow already replaces the skeleton name with the real one. Replace the _italic_ placeholders by hand, drop any (optional) section that doesn't apply, then delete this comment.
-
-Everything lives in this file, no docs folder. Around 100 lines is plenty, and when the reader needs more, link to the source file.
-
-The reader is wiring the component into an app by hand, the way the webservco/sandbox project does it. Use real class names for the component and put the interface in a comment above each object. Give app-specific classes generic names (`ExampleCommand`, not the sandbox's `ImportCommand`). When you mention the sandbox, write "the `webservco/sandbox` project". The only link to it is in the description.
-
-Keep the first description line (the general sentence and the sandbox link) as it is. On its own line below it, write one sentence about what the component does. For `description` in composer.json, use "A PHP component/library." followed by that sentence.
-
-Leave the version out of the install command. Composer picks the current major, while a hardcoded constraint goes stale (http-client still says "^0").
--->
-
 # webservco/auth
-
-> **Note:** This is a template for creating new components. Delete this note when implementing, and the hidden comment at the start of the file.
 
 A PHP component/library. Please see [webservco/sandbox](https://webservco.github.io/sandbox/) for an example project using these types of components.
 
-_What it does, in one sentence._
+Password authentication and authenticated sessions for any account table, with throttling, legacy password upgrade, session timeouts and an optional second factor.
 
-- Implements: _[PSR-N: Title](https://www.php-fig.org/psr/psr-N/)_ (optional)
-- Provides: _`psr/xxx-implementation`_ (optional)
-- Requires: _PHP extensions, external services, or setup (database table, config file)_ (optional)
-- Related: _`webservco/xxx` (how it relates)_ (optional)
+- Requires: the `auth_account_state` table in [`resources/auth.sql`](resources/auth.sql); a started session from `webservco/session`
+- Related: `webservco/mfa` (TOTP second factor, through the adapter below); `webservco/database` (the PDO container)
 
 ---
 
@@ -37,49 +19,132 @@ composer require webservco/auth
 
 ## Usage
 
-_Smallest working example for the common case. Usually that means getting an object from a factory and calling one method on it._
+One realm per kind of account (`admin`, `customer`…). The account table is the application's own: auth reads it through a mapping and only updates the password column when it upgrades a hash.
 
 ```php
-use WebServCo\Component\Factory\ExampleFactory;
+use WebServCo\Auth\Factory\AccountStorageFactory;
+use WebServCo\Auth\Factory\AuthenticationServiceFactory;
+use WebServCo\Auth\Factory\LoginServiceFactory;
+use WebServCo\Auth\Model\DataTransfer\AccountTableConfiguration;
+use WebServCo\Auth\Model\DataTransfer\RealmConfiguration;
+use WebServCo\Auth\Model\LoginStatus;
+use WebServCo\Data\Factory\Extraction\DataExtractionContainerFactory;
 
-// \WebServCo\Component\Contract\ExampleInterface
-$factory = new ExampleFactory();
-$example = $factory->createExample();
-$result = $example->doSomething($input);
+$dataExtractionContainer = (new DataExtractionContainerFactory())->createDataExtractionContainer(false);
+// $pdoContainer: \WebServCo\Database\Contract\PDOContainerInterface
+$accountStorageFactory = new AccountStorageFactory($dataExtractionContainer, $pdoContainer);
+// $sessionService: \WebServCo\Session\Contract\SessionServiceInterface, already started
+$authenticationServiceFactory = new AuthenticationServiceFactory($accountStorageFactory, $dataExtractionContainer, $sessionService);
+$loginServiceFactory = new LoginServiceFactory($accountStorageFactory, $authenticationServiceFactory);
+
+// Timeouts in seconds: 1800 idle, 43200 in all, 300 for a pending login.
+$realm = new RealmConfiguration('customer');
+// Table, id, login and password columns; only rows with status = 'active' log in; `name` comes back with the account.
+$accountTable = new AccountTableConfiguration('customer', 'id', 'email', 'password_hash', 'status', 'active', ['name']);
+
+// \WebServCo\Auth\Contract\LoginServiceInterface
+$loginService = $loginServiceFactory->createLoginService($realm, $accountTable);
+// \WebServCo\Auth\Contract\AuthenticationServiceInterface
+$authenticationService = $authenticationServiceFactory->createAuthenticationService($realm, $accountTable);
+
+// Login form.
+$result = $loginService->login($submittedLogin, $submittedPassword);
+// $result->status: LoginStatus::LoggedIn, InvalidCredentials, or Throttled (wait $result->retryAfterSeconds).
+
+// Every protected request: null means "not logged in" (also after a timeout or "log out everywhere").
+$account = $authenticationService->getAuthenticatedAccount(); // ?Account: id, login, attributes
+$authenticationService->logout();
+$authenticationService->logoutEverywhere($account->id); // after a password change or an MFA reset
 ```
 
-_Another common case? Give it its own `###` heading. Two extra examples at most._
+New and changed passwords: `(new PasswordHashService())->hash($password)` (`Service\PasswordHashService`).
+
+### Second factor with webservco/mfa
+
+auth doesn't depend on mfa. The application plugs it in with a small adapter:
+
+```php
+use WebServCo\Auth\Contract\SecondFactorInterface;
+use WebServCo\Auth\Model\SecondFactorResult;
+use WebServCo\Mfa\Contract\MfaServiceInterface;
+use WebServCo\Mfa\Model\VerificationResult;
+
+final readonly class TotpSecondFactor implements SecondFactorInterface
+{
+    public function __construct(private MfaServiceInterface $mfaService)
+    {
+    }
+
+    public function getId(): string
+    {
+        return 'totp';
+    }
+
+    public function isEnabled(string $accountId): bool
+    {
+        return $this->mfaService->getStatus($accountId)->isEnabled;
+    }
+
+    public function startChallenge(string $accountId, string $attemptId): string
+    {
+        return ''; // Nothing to prepare: the code is in the user's app.
+    }
+
+    public function verify(string $accountId, string $attemptId, string $response): SecondFactorResult
+    {
+        return match ($this->mfaService->verify($accountId, $response)) {
+            VerificationResult::Accepted, VerificationResult::AcceptedRecoveryCode => SecondFactorResult::Accepted,
+            VerificationResult::Locked => SecondFactorResult::Locked,
+            VerificationResult::Rejected => SecondFactorResult::Rejected,
+        };
+    }
+}
+```
+
+```php
+use WebServCo\Auth\Model\SecondFactorPolicy;
+
+// Required: every account needs a second factor. Optional: only accounts with MFA enabled are asked.
+$loginService = $loginServiceFactory->createLoginService(
+    $realm,
+    $accountTable,
+    SecondFactorPolicy::Required,
+    [new TotpSecondFactor($mfaService)],
+);
+
+$result = $loginService->login($submittedLogin, $submittedPassword);
+// LoginStatus::SecondFactorRequired: ask for a code (methods: $loginService->getSecondFactorMethods()).
+$result = $loginService->completeSecondFactor('totp', $submittedCode); // LoggedIn, SecondFactorRejected or Locked
+// LoginStatus::SecondFactorSetupRequired: enroll the pending account with webservco/mfa
+// ($authenticationService->getPendingAuthentication()->accountId), then:
+$result = $loginService->completeSecondFactorSetup('totp');
+```
 
 ---
 
 ## Contracts
 
-_Interfaces an app would type-hint against, and the classes that implement them. Leave out internal ones._
-
 | Interface | Implementation | Purpose |
 | --- | --- | --- |
-| `Contract\ExampleInterface` | `Service\Example` | _What it does._ |
-| `Contract\ExampleFactoryInterface` | `Factory\ExampleFactory` | _Creates `ExampleInterface`._ |
+| `Contract\LoginServiceInterface` | `Service\LoginService` | The login: password, second factor, setup. |
+| `Contract\AuthenticationServiceInterface` | `Service\AuthenticationService` | Session state: guard, pending login, logout, log out everywhere. |
+| `Contract\SecondFactorInterface` | the application's adapter | One second-factor method: `totp` today, others later. |
+| `Contract\LegacyPasswordVerifierInterface` | the application's | Old hashes (for example MD5), replaced at the next login. |
+| `Contract\PasswordHashServiceInterface` | `Service\PasswordHashService` | `password_hash()` with PHP's default settings. |
+| `Contract\LoginServiceFactoryInterface` | `Factory\LoginServiceFactory` | Creates `LoginServiceInterface`; also takes the policy, the factors and a legacy verifier. |
+| `Contract\AuthenticationServiceFactoryInterface` | `Factory\AuthenticationServiceFactory` | Creates `AuthenticationServiceInterface`. |
 
-Namespaces are relative to `WebServCo\Component\`.
-
----
-
-## Configuration (optional)
-
-_Keys read from `config/.env.ini`, each with an example value._
-
-```ini
-[Component]
-
-EXAMPLE_KEY = 'value'
-```
+Namespaces are relative to `WebServCo\Auth\`.
 
 ---
 
-## Notes (optional)
+## Notes
 
-_Anything that surprised you while using it, such as limitations, gotchas or workarounds._
+- An unknown login, a wrong password and an inactive account give the same result, in the same time.
+- From the 5th failed password in a row the account waits 60 s, doubling up to 15 minutes. It is never locked for good.
+- The second factor comes after the password, and auth checks it for the pending account itself.
+- Each step gets a new session id. The timeouts are checked on the server at every request.
+- Authorization (roles, who may reset MFA) is the application's job. Never log passwords.
 
 ---
 
