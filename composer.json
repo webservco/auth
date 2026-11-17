@@ -31,6 +31,8 @@
     "require": {
         "php" : "^8.4",
         "psr/clock" : "^1",
+        "psr/http-client" : "^1",
+        "psr/http-factory" : "^1",
         "webservco/data" : "^2",
         "webservco/database" : "^2",
         "webservco/session" : "^2"
